@@ -181,6 +181,7 @@ class BlazeposeDepthai:
         print("Creating pipeline...")
         # Start defining a pipeline
         pipeline = dai.Pipeline()
+        pipeline.setOpenVINOVersion(version = dai.OpenVINO.Version.VERSION_2021_2)
         self.pd_input_length = 128
 
         if self.input_type == "internal":
