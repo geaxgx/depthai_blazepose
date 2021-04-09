@@ -13,9 +13,10 @@ import open3d as o3d
 from o3d_utils import create_segment, create_grid
 import time
 
-POSE_DETECTION_MODEL = "models/pose_detection.blob"
-FULL_BODY_LANDMARK_MODEL = "models/pose_landmark_full_body.blob"
-UPPER_BODY_LANDMARK_MODEL = "models/pose_landmark_upper_body.blob"
+SCRIPT_DIR = Path(__file__).resolve().parent
+POSE_DETECTION_MODEL = SCRIPT_DIR / "models/pose_detection.blob"
+FULL_BODY_LANDMARK_MODEL = SCRIPT_DIR / "models/pose_landmark_full_body.blob"
+UPPER_BODY_LANDMARK_MODEL = SCRIPT_DIR / "models/pose_landmark_upper_body.blob"
 
 
 # LINES_*_BODY are used when drawing the skeleton onto the source image. 
@@ -539,8 +540,8 @@ class BlazeposeDepthai:
         # Print some stats
         print(f"# pose detection inferences : {nb_pd_inferences}")
         print(f"# landmark inferences       : {nb_lm_inferences}")
-        if self.input_type != "internal": print(f"Pose detection round trip   : {glob_pd_rtrip_time/nb_pd_inferences*1000:.1f} ms")
-        print(f"Landmark round trip         : {glob_lm_rtrip_time/nb_lm_inferences*1000:.1f} ms")
+        if self.input_type != "internal" and nb_pd_inferences != 0: print(f"Pose detection round trip   : {glob_pd_rtrip_time/nb_pd_inferences*1000:.1f} ms")
+        if nb_lm_inferences != 0:  print(f"Landmark round trip         : {glob_lm_rtrip_time/nb_lm_inferences*1000:.1f} ms")
 
         if self.output:
             self.output.release()
