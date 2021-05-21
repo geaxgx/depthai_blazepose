@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from collections import namedtuple
 import mediapipe_utils as mpu
@@ -81,6 +82,7 @@ class BlazeposeDepthai:
                 lm_score_threshold=0.7,
                 full_body=True,
                 use_gesture=False,
+                use_pose=False,
                 smoothing= True,
                 filter_window_size=5,
                 filter_velocity_scale=10,
@@ -97,6 +99,7 @@ class BlazeposeDepthai:
         self.lm_score_threshold = lm_score_threshold
         self.full_body = full_body
         self.use_gesture = use_gesture
+        self.use_pose = use_pose
         self.smoothing = smoothing
         self.show_3d = show_3d
         self.crop = crop
@@ -156,6 +159,7 @@ class BlazeposeDepthai:
         self.show_landmarks = True
         self.show_scores = False
         self.show_gesture = self.use_gesture
+        self.show_pose = self.use_pose
         self.show_fps = True
 
         if self.show_3d:
@@ -341,6 +345,8 @@ class BlazeposeDepthai:
 
             if self.use_gesture: self.recognize_gesture(region)
 
+            if self.use_pose: self.recognize_pose(region)
+
 
     def lm_render(self, frame, region):
         if region.lm_score > self.lm_score_threshold:
@@ -381,6 +387,9 @@ class BlazeposeDepthai:
             if self.use_gesture and self.show_gesture:
                 cv2.putText(frame, region.gesture, (int(region.pd_box[0]*self.frame_size+10), int(region.pd_box[1]*self.frame_size-50)), 
                         cv2.FONT_HERSHEY_PLAIN, 5, (0,1190,255), 3)
+            if self.use_pose and self.show_pose:
+                cv2.putText(frame, region.pose, (int(region.pd_box[0]*self.frame_size+10), int(region.pd_box[1]*self.frame_size-50)), 
+                        cv2.FONT_HERSHEY_PLAIN, 5, (0,1190,255), 3)
             
 
 
@@ -402,6 +411,45 @@ class BlazeposeDepthai:
         right_pose = int((right_arm_angle +202.5) / 45) 
         left_pose = int((left_arm_angle +202.5) / 45) 
         r.gesture = semaphore_flag.get((right_pose, left_pose), None)
+
+    def recognize_pose(self, r):           
+
+        def getAngle(firstPoint, midPoint, lastPoint):
+            result = np.degrees(atan2(lastPoint[1] - midPoint[1],lastPoint[0] - midPoint[0])
+                - atan2(firstPoint[1] - midPoint[1], firstPoint[0] - midPoint[0]))
+            result = abs(result) # Angle should never be negative
+            if (result > 180) :
+                result = 360.0 - result # Always get the acute representation of the angle
+        
+            return result
+        # print(r.landmarks_abs[14,:2])
+        # print(r.landmarks_abs[14])
+        # print(r.landmarks_abs[14,:3])
+
+        right_Hip_Angle = getAngle(r.landmarks_abs[14,:2],r.landmarks_abs[24,:2],r.landmarks_abs[26,:2])
+
+        right_elbow_Angle = getAngle(r.landmarks_abs[15,:2],r.landmarks_abs[13,:2],r.landmarks_abs[11,:2])
+        print(right_elbow_Angle)
+
+        left_elbow_Angle = getAngle(r.landmarks_abs[16,:2],r.landmarks_abs[14,:2],r.landmarks_abs[12,:2])
+        print(left_elbow_Angle)
+
+        left_knee_Angle = getAngle(r.landmarks_abs[28,:2],r.landmarks_abs[26,:2],r.landmarks_abs[24,:2])
+
+        right_knee_Angle = getAngle(r.landmarks_abs[23,:2],r.landmarks_abs[25,:2],r.landmarks_abs[27,:2])
+
+        right_waist_Angle = getAngle(r.landmarks_abs[11,:2],r.landmarks_abs[26,:2],r.landmarks_abs[25,:2])
+
+
+        r.pose = "Pose not detected"
+
+        
+        if right_elbow_Angle >= 160 and right_elbow_Angle <= 180 and left_elbow_Angle>=160 and left_elbow_Angle<=180 and left_knee_Angle>=82 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(130,140):
+            r.pose = "warrior"
+        if right_elbow_Angle >= 160 and right_elbow_Angle <= 180 and left_elbow_Angle>=160 and left_elbow_Angle<=180:
+            r.pose = "straight hands"
+        
+         
                 
     def run(self):
 
@@ -553,6 +601,8 @@ if __name__ == "__main__":
                         help="Path to video or image file to use as input (default: internal camera")
     parser.add_argument('-g', '--gesture', action="store_true", 
                         help="enable gesture recognition")
+    parser.add_argument('-ps', '--pose', action="store_true", 
+                        help="enable pose recognition")
     parser.add_argument("--pd_m", type=str,
                         help="Path to an .blob file for pose detection model")
     parser.add_argument("--lm_m", type=str,
@@ -596,6 +646,7 @@ if __name__ == "__main__":
                     filter_window_size=args.filter_window_size,
                     filter_velocity_scale=args.filter_velocity_scale,
                     use_gesture=args.gesture,
+                    use_pose=args.pose,
                     show_3d=args.show_3d,
                     crop=args.crop,
                     multi_detection=args.multi_detection,
