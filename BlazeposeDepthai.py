@@ -444,11 +444,8 @@ class BlazeposeDepthai:
         r.pose = "Pose not detected"
 
         
-        if right_elbow_Angle >= 160 and right_elbow_Angle <= 180 and left_elbow_Angle>=160 and left_elbow_Angle<=180 and left_knee_Angle>=82 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(130,140):
-            r.pose = "warrior"
-        if right_elbow_Angle >= 160 and right_elbow_Angle <= 180 and left_elbow_Angle>=160 and left_elbow_Angle<=180:
-            r.pose = "straight hands"
-        
+        if right_elbow_Angle >= 160 and right_elbow_Angle <= 190 and left_elbow_Angle>=160 and left_elbow_Angle<=190 and left_knee_Angle>=80 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(130,140):
+            r.pose = "warrior"     
          
                 
     def run(self):
