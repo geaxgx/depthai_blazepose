@@ -419,12 +419,8 @@ class BlazeposeDepthai:
                 - atan2(firstPoint[1] - midPoint[1], firstPoint[0] - midPoint[0]))
             result = abs(result) # Angle should never be negative
             if (result > 180) :
-                result = 360.0 - result # Always get the acute representation of the angle
-        
+                result = 360.0 - result # Always get the acute representation of the angle        
             return result
-        # print(r.landmarks_abs[14,:2])
-        # print(r.landmarks_abs[14])
-        # print(r.landmarks_abs[14,:3])
 
         right_Hip_Angle = getAngle(r.landmarks_abs[14,:2],r.landmarks_abs[24,:2],r.landmarks_abs[26,:2])
 
@@ -440,13 +436,27 @@ class BlazeposeDepthai:
 
         right_waist_Angle = getAngle(r.landmarks_abs[11,:2],r.landmarks_abs[26,:2],r.landmarks_abs[25,:2])
 
+        left_waist_Angle = getAngle(r.landmarks_abs[11,:2],r.landmarks_abs[26,:2],r.landmarks_abs[25,:2])
+        # correct this up above
+
+        angle_between_knees = 360 - (left_waist_Angle + right_waist_Angle)
+
+        #define angle between knees
+
 
         r.pose = "Pose not detected"
 
-        
-        if right_elbow_Angle >= 160 and right_elbow_Angle <= 190 and left_elbow_Angle>=160 and left_elbow_Angle<=190 and left_knee_Angle>=80 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(130,140):
-            r.pose = "warrior"     
-         
+        # warrior pose        
+        if right_elbow_Angle >= 160 and right_elbow_Angle <= 190 and left_elbow_Angle>=160 and left_elbow_Angle<=190 and left_knee_Angle>=80 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(120,150):
+            r.pose = "warrior"  
+
+        # straight hands only pose   
+        if right_elbow_Angle in range(160, 190) and left_elbow_Angle in range(160, 190):
+            r.pose = "outstretched hands"   
+
+        # triangle pose 1 : Star pose 
+        if right_elbow_Angle in range(160, 190) and left_elbow_Angle in range(160, 190) and left_knee_Angle in range(160,190) and right_knee_Angle in range(160,190) and angle_between_knees in range(80,100):
+            r.pose = "star pose"   
                 
     def run(self):
 
