@@ -835,52 +835,8 @@ class BlazeposeDepthai:
 
     def recognize_pose(self, r):           
 
-        def getAngle(firstPoint, midPoint, lastPoint):
-            result = np.degrees(atan2(lastPoint[1] - midPoint[1],lastPoint[0] - midPoint[0])
-                - atan2(firstPoint[1] - midPoint[1], firstPoint[0] - midPoint[0]))
-            result = abs(result) # Angle should never be negative
-            if (result > 180) :
-                result = 360.0 - result # Always get the acute representation of the angle        
-            return result
-
-        right_Hip_Angle = getAngle(r.landmarks_abs[14,:2],r.landmarks_abs[24,:2],r.landmarks_abs[26,:2])
-
-        right_elbow_Angle = getAngle(r.landmarks_abs[15,:2],r.landmarks_abs[13,:2],r.landmarks_abs[11,:2])
-        print(right_elbow_Angle)
-
-        left_elbow_Angle = getAngle(r.landmarks_abs[16,:2],r.landmarks_abs[14,:2],r.landmarks_abs[12,:2])
-        print(left_elbow_Angle)
-
-        left_knee_Angle = getAngle(r.landmarks_abs[28,:2],r.landmarks_abs[26,:2],r.landmarks_abs[24,:2])
-
-        right_knee_Angle = getAngle(r.landmarks_abs[23,:2],r.landmarks_abs[25,:2],r.landmarks_abs[27,:2])
-
-        right_waist_Angle = getAngle(r.landmarks_abs[11,:2],r.landmarks_abs[26,:2],r.landmarks_abs[25,:2])
-
-        left_waist_Angle = getAngle(r.landmarks_abs[11,:2],r.landmarks_abs[26,:2],r.landmarks_abs[25,:2])
-        # correct this up above
-
-        angle_between_knees = 360 - (left_waist_Angle + right_waist_Angle)
-
-        #define angle between knees
-
-
         r.pose = "Pose not detected"
 
-        # warrior pose        
-        if right_elbow_Angle >= 160 and right_elbow_Angle <= 190 and left_elbow_Angle>=160 and left_elbow_Angle<=190 and left_knee_Angle>=80 and left_knee_Angle<=98 and right_knee_Angle>=170 and right_knee_Angle<=190 and right_waist_Angle in range(120,150):
-            r.pose = "warrior"  
-
-        # straight hands only pose   
-        if right_elbow_Angle in range(160, 190) and left_elbow_Angle in range(160, 190):
-            r.pose = "outstretched hands"  
-
-        if right_elbow_Angle >= 160 and right_elbow_Angle <= 190 and left_elbow_Angle>=160 and left_elbow_Angle<=190:
-            r.pose = "outstreched but not range" 
-
-        # triangle pose 1 : Star pose 
-        if right_elbow_Angle in range(160, 190) and left_elbow_Angle in range(160, 190) and left_knee_Angle in range(160,190) and right_knee_Angle in range(160,190) and angle_between_knees in range(80,100):
-            r.pose = "star pose"   
 
     #################################################################################
 
