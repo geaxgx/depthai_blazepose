@@ -889,7 +889,7 @@ class BlazeposeDepthai:
         pose_embedder = FullBodyPoseEmbedder()
 
         pose_classifier = PoseClassifier(
-                pose_samples_folder='/home/soumi/fitness_poses_csvs_out',
+                pose_samples_folder='./fitness_poses_csvs_out',
                 pose_embedder=pose_embedder,
                 top_n_by_max_distance=30,
                 top_n_by_mean_distance=10)
