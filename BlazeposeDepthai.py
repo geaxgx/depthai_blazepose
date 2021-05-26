@@ -810,7 +810,7 @@ class BlazeposeDepthai:
                         cv2.FONT_HERSHEY_PLAIN, 5, (0,1190,255), 3)
             if self.use_pose and self.show_pose:
                 cv2.putText(frame, region.pose, (int(region.pd_box[0]*self.frame_size+10), int(region.pd_box[1]*self.frame_size-50)), 
-                        cv2.FONT_HERSHEY_PLAIN, 5, (0,1190,255), 3)
+                        cv2.FONT_HERSHEY_PLAIN, 3, (0,1190,255), 3)
             
 
 
