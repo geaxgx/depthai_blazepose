@@ -4,7 +4,7 @@ usage ()
 {
 	echo "Generate a new blob with a specified number of shaves and cmx (nb cmx = nb shaves)"
 	echo "Usage: ${0} -m model -n nb_shaves"
-	echo "model = 'pd' for pose detection, 'lm_full' for full body landmarks or 'lm_up' for upper body landmarks"
+	echo "model = 'pd' for pose detection, 'lm_full' or 'lm_lite' or 'lm_831' for landmarks"
 	echo "nb_shaves must be between 1 and 13"
 }
 
@@ -43,10 +43,13 @@ then
 	model="pose_detection"
 elif [ $model == "lm_full" ]
 then
-	model="pose_landmark_full_body"
-elif [ $model == "lm_up" ]
+	model="pose_landmark_full"
+elif [ $model == "lm_lite" ]
 then
-	model="pose_landmark_upper_body"
+	model="pose_landmark_lite"
+elif [ $model == "lm_831" ]
+then
+	model="pose_landmark_full_0831"
 else
 	echo "Invalid model !"
 	usage

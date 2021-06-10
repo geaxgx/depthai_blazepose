@@ -7,114 +7,128 @@ from FPS import FPS, now
 import argparse
 import os
 import depthai as dai
-from math import atan2
 
 import open3d as o3d
 from o3d_utils import create_segment, create_grid
 import time
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-POSE_DETECTION_MODEL = SCRIPT_DIR / "models/pose_detection.blob"
-FULL_BODY_LANDMARK_MODEL = SCRIPT_DIR / "models/pose_landmark_full_body.blob"
-UPPER_BODY_LANDMARK_MODEL = SCRIPT_DIR / "models/pose_landmark_upper_body.blob"
+POSE_DETECTION_MODEL = SCRIPT_DIR / "models/pose_detection_sh4.blob"
+LANDMARK_MODEL_FULL = SCRIPT_DIR / "models/pose_landmark_full_sh4.blob"
+LANDMARK_MODEL_FULL_0831 = SCRIPT_DIR / "models/pose_landmark_full_0831_sh4.blob"
+LANDMARK_MODEL_LITE = SCRIPT_DIR / "models/pose_landmark_lite_sh4.blob"
 
 
-# LINES_*_BODY are used when drawing the skeleton onto the source image. 
-# Each variable is a list of continuous lines.
-# Each line is a list of keypoints as defined at https://google.github.io/mediapipe/solutions/pose.html#pose-landmark-model-blazepose-ghum-3d
-LINES_FULL_BODY = [[28,30,32,28,26,24,12,11,23,25,27,29,31,27], 
-                    [23,24],
-                    [22,16,18,20,16,14,12], 
-                    [21,15,17,19,15,13,11],
-                    [8,6,5,4,0,1,2,3,7],
-                    [10,9],
-                    ]
-LINES_UPPER_BODY = [[12,11,23,24,12], 
-                    [22,16,18,20,16,14,12], 
-                    [21,15,17,19,15,13,11],
-                    [8,6,5,4,0,1,2,3,7],
-                    [10,9],
-                    ]
-# LINE_MESH_*_BODY are used when drawing the skeleton in 3D. 
-rgb = {"right":(0,1,0), "left":(1,0,0), "middle":(1,1,0)}
-LINE_MESH_FULL_BODY = [ [9,10],[4,6],[1,3],
-                        [12,14],[14,16],[16,20],[20,18],[18,16],
-                        [12,11],[11,23],[23,24],[24,12],
-                        [11,13],[13,15],[15,19],[19,17],[17,15],
-                        [24,26],[26,28],[32,30],
-                        [23,25],[25,27],[29,31]]
-LINE_TEST = [ [12,11],[11,23],[23,24],[24,12]]
-
-COLORS_FULL_BODY = ["middle","right","left",
-                    "right","right","right","right","right",
-                    "middle","middle","middle","middle",
-                    "left","left","left","left","left",
-                    "right","right","right","left","left","left"]
-COLORS_FULL_BODY = [rgb[x] for x in COLORS_FULL_BODY]
-LINE_MESH_UPPER_BODY = [[9,10],[4,6],[1,3],
-                        [12,14],[14,16],[16,20],[20,18],[18,16],
-                        [12,11],[11,23],[23,24],[24,12],
-                        [11,13],[13,15],[15,19],[19,17],[17,15]
-                        ]
-
-# For gesture demo
-semaphore_flag = {
-        (3,4):'A', (2,4):'B', (1,4):'C', (0,4):'D',
-        (4,7):'E', (4,6):'F', (4,5):'G', (2,3):'H',
-        (0,3):'I', (0,6):'J', (3,0):'K', (3,7):'L',
-        (3,6):'M', (3,5):'N', (2,1):'O', (2,0):'P',
-        (2,7):'Q', (2,6):'R', (2,5):'S', (1,0):'T',
-        (1,7):'U', (0,5):'V', (7,6):'W', (7,5):'X',
-        (1,6):'Y', (5,6):'Z'
-}
-
-# def to_planar(arr: np.ndarray, shape: tuple) -> list:
 def to_planar(arr: np.ndarray, shape: tuple) -> np.ndarray:
-    resized = cv2.resize(arr, shape)
-    return resized.transpose(2,0,1)
+    return cv2.resize(arr, shape).transpose(2,0,1).flatten()
 
 class BlazeposeDepthai:
-    def __init__(self, input_src=None,
-                pd_path=POSE_DETECTION_MODEL, 
-                pd_score_thresh=0.5, pd_nms_thresh=0.3,
-                lm_path=FULL_BODY_LANDMARK_MODEL,
-                lm_score_threshold=0.7,
-                full_body=True,
-                use_gesture=False,
+    """
+    Blazepose body pose detector
+    Arguments:
+    - input_src: frame source, 
+                    - "rgb" or None: OAK* internal color camera,
+                    - "rgb_laconic": same as "rgb" but without sending the frames to the host,
+                    - a file path of an image or a video,
+                    - an integer (eg 0) for a webcam id,
+    - pd_model: Blazepose detection model blob file (if None, takes the default value POSE_DETECTION_MODEL),
+    - pd_score: confidence score to determine whether a detection is reliable (a float between 0 and 1).
+    - lm_model: Blazepose landmark model blob file
+                    - None or "full": the default blob file LANDMARK_MODEL_FULL,
+                    - "lite": the default blob file LANDMARK_MODEL_LITE,
+                    - "831": the full model from previous version of mediapipe (0.8.3.1) LANDMARK_MODEL_FULL_0831,
+                    - a path of a blob file. 
+    - lm_score_thresh : confidence score to determine whether landmarks prediction is reliable (a float between 0 and 1).
+    - crop : boolean which indicates if square cropping is done or not
+    - smoothing: boolean which indicates if smoothing filtering is applied
+    - filter_window_size and filter_velocity_scale:
+            The filter keeps track (on a window of specified size) of
+            value changes over time, which as result gives velocity of how value
+            changes over time. With higher velocity it weights new values higher.
+            - higher filter_window_size adds to lag and to stability
+            - lower filter_velocity_scale adds to lag and to stability
+
+    - internal_fps : when using the internal color camera as input source, set its FPS to this value (calling setFps()).
+    - internal_frame_height : when using the internal color camera, set the frame height (calling setIspScale()).
+                                The width is calculated accordingly to height and depends on value of 'crop'
+    - stats : boolean, when True, display some statistics when exiting.   
+    - trace: boolean, when True print some debug messages   
+    - force_detection:     boolean, force person detection on every frame (never use landmarks from previous frame to determine ROI)           
+    """
+    def __init__(self, input_src="rgb",
+                pd_model=None, 
+                pd_score_thresh=0.5,
+                lm_model=None,
+                lm_score_thresh=0.7,
+                crop=False,
                 smoothing= True,
                 filter_window_size=5,
                 filter_velocity_scale=10,
-                show_3d=False,
-                crop=False,
-                multi_detection=False,
-                output=None,
-                internal_fps=15):
+                internal_fps=None,
+                internal_frame_height=1080,
+                stats=False,
+                trace=False,
+                force_detection=False
+                ):
         
-        self.pd_path = pd_path
+        self.pd_model = pd_model if pd_model else POSE_DETECTION_MODEL
+        print(f"Pose detection blob file : {self.pd_model}")
+        self.rect_transf_scale = 1.25
+        if lm_model is None or lm_model == "full":
+            self.lm_model = LANDMARK_MODEL_FULL
+        elif lm_model == "lite":
+            self.lm_model = LANDMARK_MODEL_LITE
+        elif lm_model == "831":
+            self.lm_model = LANDMARK_MODEL_FULL_0831
+            self.rect_transf_scale = 1.5
+        else:
+            self.lm_model = lm_model
+        print(f"Landmarks using blob file : {self.lm_model}")
+        
         self.pd_score_thresh = pd_score_thresh
-        self.pd_nms_thresh = pd_nms_thresh
-        self.lm_path = lm_path
-        self.lm_score_threshold = lm_score_threshold
-        self.full_body = full_body
-        self.use_gesture = use_gesture
+        self.lm_score_thresh = lm_score_thresh
         self.smoothing = smoothing
-        self.show_3d = show_3d
-        self.crop = crop
-        self.multi_detection = multi_detection
-        if self.multi_detection:
-            print("With multi-detection, smoothing filter is disabled.")
-            self.smoothing = False
-        self.internal_fps = internal_fps
+        self.crop = crop 
+        self.internal_fps = internal_fps     
+        self.stats = stats
+        self.force_detection = force_detection
         
-        if input_src == None:
-            self.input_type = "internal" # OAK* internal color camera
+        if input_src == None or input_src == "rgb" or input_src == "rgb_laconic":
+            # Note that here (in Host mode), specifying "rgb_laconic" has no effect
+            # Color camera frame is systematically transferred to the host
+            self.input_type = "rgb" # OAK* internal color camera
+            if internal_fps is None:
+                if "831" in str(lm_model):
+                    self.internal_fps = 15
+                elif "full" in str(lm_model):
+                    self.internal_fps = 12
+                else: 
+                    self.internal_fps = 20
+            else:
+                self.internal_fps = internal_fps
+            print(f"Internal camera FPS set to: {self.internal_fps}")
+
             self.video_fps = internal_fps # Used when saving the output in a video file. Should be close to the real fps
-            video_height = video_width = 1080 # Depends on cam.setResolution() in create_pipeline()
+
+            if self.crop:
+                self.frame_size, self.scale_nd = mpu.find_isp_scale_params(internal_frame_height)
+                self.img_h = self.img_w = self.frame_size
+                self.pad_w = self.pad_h = 0
+            else:
+                width, self.scale_nd = mpu.find_isp_scale_params(internal_frame_height * 1920 / 1080, is_height=False)
+                self.img_h = int(round(1080 * self.scale_nd[0] / self.scale_nd[1]))
+                self.img_w = int(round(1920 * self.scale_nd[0] / self.scale_nd[1]))
+                self.pad_h = (self.img_w - self.img_h) // 2
+                self.pad_w = 0
+                self.frame_size = self.img_w
+
+            print(f"Internal camera image size: {self.img_w} x {self.img_h} - pad_h: {self.pad_h}")
+
         elif input_src.endswith('.jpg') or input_src.endswith('.png') :
             self.input_type= "image"
             self.img = cv2.imread(input_src)
             self.video_fps = 25
-            video_height, video_width = self.img.shape[:2]
+            self.img_h, self.img_w = self.img.shape[:2]
         else:
             self.input_type = "video"
             if input_src.isdigit():
@@ -122,116 +136,145 @@ class BlazeposeDepthai:
                 input_src = int(input_src)
             self.cap = cv2.VideoCapture(input_src)
             self.video_fps = int(self.cap.get(cv2.CAP_PROP_FPS))
-            video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.img_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.img_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             print("Video FPS:", self.video_fps)
 
-        self.nb_kps = 33 if self.full_body else 25
+        if self.input_type != "rgb":
+            print(f"Original frame size: {self.img_w}x{self.img_h}")
+            if self.crop:
+                self.frame_size = min(self.img_w, self.img_h) # // 16 * 16
+            else:
+                self.frame_size = max(self.img_w, self.img_h) #// 16 * 16
+            self.crop_w = max((self.img_w - self.frame_size) // 2, 0)
+            if self.crop_w: print("Cropping on width :", self.crop_w)
+            self.crop_h = max((self.img_h - self.frame_size) // 2, 0)
+            if self.crop_h: print("Cropping on height :", self.crop_h)
+
+            self.pad_w = max((self.frame_size - self.img_w) // 2, 0)
+            if self.pad_w: print("Padding on width :", self.pad_w)
+            self.pad_h = max((self.frame_size - self.img_h) // 2, 0)
+            if self.pad_h: print("Padding on height :", self.pad_h)
+            
+            
+            print(f"Frame working size: {self.img_w}x{self.img_h}")
+
+        self.nb_kps = 33 # Number of "viewable" keypoints
 
         if self.smoothing:
             self.filter = mpu.LandmarksSmoothingFilter(filter_window_size, filter_velocity_scale, (self.nb_kps, 3))
     
         # Create SSD anchors 
-        # https://github.com/google/mediapipe/blob/master/mediapipe/modules/pose_detection/pose_detection_cpu.pbtxt
-        anchor_options = mpu.SSDAnchorOptions(num_layers=4, 
-                                min_scale=0.1484375,
-                                max_scale=0.75,
-                                input_size_height=128,
-                                input_size_width=128,
-                                anchor_offset_x=0.5,
-                                anchor_offset_y=0.5,
-                                strides=[8, 16, 16, 16],
-                                aspect_ratios= [1.0],
-                                reduce_boxes_in_lowest_layer=False,
-                                interpolated_scale_aspect_ratio=1.0,
-                                fixed_anchor_size=True)
-        self.anchors = mpu.generate_anchors(anchor_options)
+        self.anchors = mpu.generate_blazepose_anchors()
         self.nb_anchors = self.anchors.shape[0]
         print(f"{self.nb_anchors} anchors have been created")
 
-        # Rendering flags
-        self.show_pd_box = False
-        self.show_pd_kps = False
-        self.show_rot_rect = False
-        self.show_landmarks = True
-        self.show_scores = False
-        self.show_gesture = self.use_gesture
-        self.show_fps = True
+        # Define and start pipeline
+        self.pd_input_length = 224
+        self.lm_input_length = 256
+        self.device = dai.Device(self.create_pipeline())
+        print("Pipeline started")
 
-        if self.show_3d:
-            self.vis3d = o3d.visualization.Visualizer()
-            self.vis3d.create_window() 
-            opt = self.vis3d.get_render_option()
-            opt.background_color = np.asarray([0, 0, 0])
-            z = min(video_height, video_width)/3
-            self.grid_floor = create_grid([0,video_height,-z],[video_width,video_height,-z],[video_width,video_height,z],[0,video_height,z],5,2, color=(1,1,1))
-            self.grid_wall = create_grid([0,0,z],[video_width,0,z],[video_width,video_height,z],[0,video_height,z],5,2, color=(1,1,1))
-            self.vis3d.add_geometry(self.grid_floor)
-            self.vis3d.add_geometry(self.grid_wall)
-            view_control = self.vis3d.get_view_control()
-            view_control.set_up(np.array([0,-1,0]))
-            view_control.set_front(np.array([0,0,-1]))
-
-        if output is None:
-            self.output = None
+        # Define data queues 
+        if self.input_type == "rgb":
+            self.q_video = self.device.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
+            self.q_pre_pd_manip_cfg = self.device.getInputQueue(name="pre_pd_manip_cfg")
         else:
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            self.output = cv2.VideoWriter(output,fourcc,self.video_fps,(video_width, video_height)) 
+            self.q_pd_in = self.device.getInputQueue(name="pd_in")
+        self.q_pd_out = self.device.getOutputQueue(name="pd_out", maxSize=4, blocking=True)
+        self.q_lm_in = self.device.getInputQueue(name="lm_in")
+        self.q_lm_out = self.device.getOutputQueue(name="lm_out", maxSize=4, blocking=True)
+            
+
+        self.fps = FPS()
+
+        self.nb_frames = 0
+        self.nb_pd_inferences = 0
+        self.nb_lm_inferences = 0
+        self.nb_lm_inferences_after_landmarks_ROI = 0
+        self.nb_frames_no_body = 0
+
+        self.glob_pd_rtrip_time = 0
+        self.glob_lm_rtrip_time = 0
+
+        self.use_previous_landmarks = False
+
+
+
+        self.cfg_pre_pd = dai.ImageManipConfig()
+        self.cfg_pre_pd.setResizeThumbnail(self.pd_input_length, self.pd_input_length)
 
     def create_pipeline(self):
         print("Creating pipeline...")
         # Start defining a pipeline
         pipeline = dai.Pipeline()
-        pipeline.setOpenVINOVersion(version = dai.OpenVINO.Version.VERSION_2021_2)
-        self.pd_input_length = 128
+        pipeline.setOpenVINOVersion(version = dai.OpenVINO.Version.VERSION_2021_3)
+        
 
-        if self.input_type == "internal":
+        if self.input_type == "rgb":
             # ColorCamera
             print("Creating Color Camera...")
             cam = pipeline.createColorCamera()
-            cam.setPreviewSize(self.pd_input_length, self.pd_input_length)
             cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-            # Crop video to square shape (palm detection takes square image as input)
-            self.video_size = min(cam.getVideoSize())
-            cam.setVideoSize(self.video_size, self.video_size)
-            # 
-            cam.setFps(self.internal_fps)
             cam.setInterleaved(False)
+            cam.setIspScale(self.scale_nd[0], self.scale_nd[1])
+            cam.setFps(self.internal_fps)
             cam.setBoardSocket(dai.CameraBoardSocket.RGB)
+
+            if self.crop:
+                cam.setVideoSize(self.frame_size, self.frame_size)
+                cam.setPreviewSize(self.frame_size, self.frame_size)
+            else: 
+                cam.setVideoSize(self.img_w, self.img_h)
+                cam.setPreviewSize(self.img_w, self.img_h)
+            
             cam_out = pipeline.createXLinkOut()
             cam_out.setStreamName("cam_out")
-            # Link video output to host for higher resolution
             cam.video.link(cam_out.input)
+
+            # Define pose detection pre processing (resize preview to (self.pd_input_length, self.pd_input_length))
+            print("Creating Pose Detection pre processing image manip...")
+            pre_pd_manip = pipeline.create(dai.node.ImageManip)
+            pre_pd_manip.setMaxOutputFrameSize(self.pd_input_length*self.pd_input_length*3)
+            pre_pd_manip.setWaitForConfigInput(True)
+            pre_pd_manip.inputImage.setQueueSize(1)
+            pre_pd_manip.inputImage.setBlocking(False)
+            cam.preview.link(pre_pd_manip.inputImage)
+
+            pre_pd_manip_cfg_in = pipeline.create(dai.node.XLinkIn)
+            pre_pd_manip_cfg_in.setStreamName("pre_pd_manip_cfg")
+            pre_pd_manip_cfg_in.out.link(pre_pd_manip.inputConfig)   
 
         # Define pose detection model
         print("Creating Pose Detection Neural Network...")
         pd_nn = pipeline.createNeuralNetwork()
-        pd_nn.setBlobPath(str(Path(self.pd_path).resolve().absolute()))
+        pd_nn.setBlobPath(str(Path(self.pd_model).resolve().absolute()))
         # Increase threads for detection
         # pd_nn.setNumInferenceThreads(2)
         # Specify that network takes latest arriving frame in non-blocking manner
         # Pose detection input                 
-        if self.input_type == "internal":
-            pd_nn.input.setQueueSize(1)
-            pd_nn.input.setBlocking(False)
-            cam.preview.link(pd_nn.input)
+        if self.input_type == "rgb":
+            pre_pd_manip.out.link(pd_nn.input)
         else:
             pd_in = pipeline.createXLinkIn()
             pd_in.setStreamName("pd_in")
             pd_in.out.link(pd_nn.input)
+
         # Pose detection output
         pd_out = pipeline.createXLinkOut()
         pd_out.setStreamName("pd_out")
         pd_nn.out.link(pd_out.input)
         
 
-         # Define landmark model
+        # Define landmark model
         print("Creating Landmark Neural Network...")          
         lm_nn = pipeline.createNeuralNetwork()
-        lm_nn.setBlobPath(str(Path(self.lm_path).resolve().absolute()))
+        lm_nn.setBlobPath(str(Path(self.lm_model).resolve().absolute()))
         lm_nn.setNumInferenceThreads(1)
         # Landmark input
-        self.lm_input_length = 256
+        # if self.input_type == "rgb":
+        #     pre_lm_manip.out.link(lm_nn.input)
+        # else:
         lm_in = pipeline.createXLinkIn()
         lm_in.setStreamName("lm_in")
         lm_in.out.link(lm_nn.input)
@@ -245,53 +288,25 @@ class BlazeposeDepthai:
 
         
     def pd_postprocess(self, inference):
-        scores = np.array(inference.getLayerFp16("classificators"), dtype=np.float16) # 896
-        bboxes = np.array(inference.getLayerFp16("regressors"), dtype=np.float16).reshape((self.nb_anchors,12)) # 896x12
-
+        scores = np.array(inference.getLayerFp16("Identity_1"), dtype=np.float16) # 2254
+        bboxes = np.array(inference.getLayerFp16("Identity"), dtype=np.float16).reshape((self.nb_anchors,12)) # 2254x12
         # Decode bboxes
-        self.regions = mpu.decode_bboxes(self.pd_score_thresh, scores, bboxes, self.anchors, best_only=not self.multi_detection)
-        # Non maximum suppression (not needed if best_only is True)
-        if self.multi_detection: 
-            self.regions = mpu.non_max_suppression(self.regions, self.pd_nms_thresh)
-        
-        mpu.detections_to_rect(self.regions, kp_pair=[0,1] if self.full_body else [2,3])
-        mpu.rect_transformation(self.regions, self.frame_size, self.frame_size)
-
-    def pd_render(self, frame):
-        for r in self.regions:
-            if self.show_pd_box:
-                box = (np.array(r.pd_box) * self.frame_size).astype(int)
-                cv2.rectangle(frame, (box[0], box[1]), (box[0]+box[2], box[1]+box[3]), (0,255,0), 2)
-            if self.show_pd_kps:
-                # Key point 0 - mid hip center
-                # Key point 1 - point that encodes size & rotation (for full body)
-                # Key point 2 - mid shoulder center
-                # Key point 3 - point that encodes size & rotation (for upper body)
-                if self.full_body:
-                    # Only kp 0 and 1 used
-                    list_kps = [0, 1]
-                else:
-                    # Only kp 2 and 3 used for upper body
-                    list_kps = [2, 3]
-                for kp in list_kps:
-                    x = int(r.pd_kps[kp][0] * self.frame_size)
-                    y = int(r.pd_kps[kp][1] * self.frame_size)
-                    cv2.circle(frame, (x, y), 3, (0,0,255), -1)
-                    cv2.putText(frame, str(kp), (x, y+12), cv2.FONT_HERSHEY_PLAIN, 1.5, (0,255,0), 2)
-            if self.show_scores:
-                cv2.putText(frame, f"Pose score: {r.pd_score:.2f}", 
-                        (int(r.pd_box[0] * self.frame_size+10), int((r.pd_box[1]+r.pd_box[3])*self.frame_size+60)), 
-                        cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
-
+        bodies = mpu.decode_bboxes(self.pd_score_thresh, scores, bboxes, self.anchors, best_only=True)
+        if bodies:
+            body = bodies[0]
+        else:
+            return None
+        mpu.detections_to_rect(body)
+        mpu.rect_transformation(body, self.frame_size, self.frame_size, self.rect_transf_scale)
+        return body
    
-    def lm_postprocess(self, region, inference):
-        region.lm_score = inference.getLayerFp16("output_poseflag")[0]
-        if region.lm_score > self.lm_score_threshold:  
-            self.nb_active_regions += 1
+    def lm_postprocess(self, body, inference):
+        body.lm_score = inference.getLayerFp16("output_poseflag")[0]
+        if body.lm_score > self.lm_score_thresh:  
 
             lm_raw = np.array(inference.getLayerFp16("ld_3d")).reshape(-1,5)
             # Each keypoint have 5 information:
-            # - X,Y coordinates are local to the region of
+            # - X,Y coordinates are local to the body of
             # interest and range from [0.0, 255.0].
             # - Z coordinate is measured in "image pixels" like
             # the X and Y coordinates and represents the
@@ -316,289 +331,129 @@ class BlazeposeDepthai:
             # Apply sigmoid on visibility and presence (if used later)
             # lm_raw[:,3:5] = 1 / (1 + np.exp(-lm_raw[:,3:5]))
             
-            # region.landmarks contains the landmarks normalized 3D coordinates in the relative oriented body bounding box
-            region.landmarks = lm_raw[:,:3]
-            # Calculate the landmark coordinate in square padded image (region.landmarks_padded)
+            # body.norm_landmarks contains the normalized ([0:1]) 3D coordinates of landmarks in the square rotated body bounding box
+            body.norm_landmarks = lm_raw[:,:3]
+            # Now calculate body.landmarks = the landmarks in the image coordinate system (in pixel) (body.landmarks)
             src = np.array([(0, 0), (1, 0), (1, 1)], dtype=np.float32)
-            dst = np.array([ (x, y) for x,y in region.rect_points[1:]], dtype=np.float32) # region.rect_points[0] is left bottom point and points going clockwise!
+            dst = np.array([ (x, y) for x,y in body.rect_points[1:]], dtype=np.float32) # body.rect_points[0] is left bottom point and points going clockwise!
             mat = cv2.getAffineTransform(src, dst)
-            lm_xy = np.expand_dims(region.landmarks[:self.nb_kps,:2], axis=0)
+            lm_xy = np.expand_dims(body.norm_landmarks[:self.nb_kps+2,:2], axis=0)
             lm_xy = np.squeeze(cv2.transform(lm_xy, mat))  
-            # A segment of length 1 in the coordinates system of body bounding box takes region.rect_w_a pixels in the
+            # A segment of length 1 in the coordinates system of body bounding box takes body.rect_w_a pixels in the
             # original image. Then we arbitrarily divide by 4 for a more realistic appearance.
-            lm_z = region.landmarks[:self.nb_kps,2:3] * region.rect_w_a / 4
+            lm_z = body.norm_landmarks[:self.nb_kps+2,2:3] * body.rect_w_a / 4
             lm_xyz = np.hstack((lm_xy, lm_z))
             if self.smoothing:
                 lm_xyz = self.filter.apply(lm_xyz)
-            region.landmarks_padded = lm_xyz.astype(np.int)
-            # If we added padding to make the image square, we need to remove this padding from landmark coordinates
-            # region.landmarks_abs contains absolute landmark coordinates in the original image (padding removed))
-            region.landmarks_abs = region.landmarks_padded.copy()
+            body.landmarks = lm_xyz.astype(np.int)
+
+            # body_from_landmarks will be used to initialize the bounding rotated rectangle in the next frame
+            # The only information we need are the 2 landmarks 33 and 34
+            self.body_from_landmarks = mpu.Body(pd_kps=body.landmarks[self.nb_kps:self.nb_kps+2,:2]/self.frame_size)
+
+            # If we added padding to make the image square, we need to remove this padding from landmark coordinates and from rect_points
             if self.pad_h > 0:
-                region.landmarks_abs[:,1] -= self.pad_h
+                body.landmarks[:,1] -= self.pad_h
+                for i in range(len(body.rect_points)):
+                    body.rect_points[i][1] -= self.pad_h
             if self.pad_w > 0:
-                region.landmarks_abs[:,0] -= self.pad_w
-
-            if self.use_gesture: self.recognize_gesture(region)
-
-
-    def lm_render(self, frame, region):
-        if region.lm_score > self.lm_score_threshold:
-            if self.show_rot_rect:
-                cv2.polylines(frame, [np.array(region.rect_points)], True, (0,255,255), 2, cv2.LINE_AA)
-            if self.show_landmarks:
+                body.landmarks[:,0] -= self.pad_w
+                for i in range(len(body.rect_points)):
+                    body.rect_points[i][0] -= self.pad_w
                 
-                list_connections = LINES_FULL_BODY if self.full_body else LINES_UPPER_BODY
-                lines = [np.array([region.landmarks_padded[point,:2] for point in line]) for line in list_connections]
-                cv2.polylines(frame, lines, False, (255, 180, 90), 2, cv2.LINE_AA)
                 
-                for i,x_y in enumerate(region.landmarks_padded[:,:2]):
-                    if i > 10:
-                        color = (0,255,0) if i%2==0 else (0,0,255)
-                    elif i == 0:
-                        color = (0,255,255)
-                    elif i in [4,5,6,8,10]:
-                        color = (0,255,0)
-                    else:
-                        color = (0,0,255)
-                    cv2.circle(frame, (x_y[0], x_y[1]), 4, color, -11)
+    def next_frame(self):
 
-                if self.show_3d:
-                    points = region.landmarks_abs
-                    lines = LINE_MESH_FULL_BODY if self.full_body else LINE_MESH_UPPER_BODY
-                    colors = COLORS_FULL_BODY
-                    for i,a_b in enumerate(lines):
-                        a, b = a_b
-                        line = create_segment(points[a], points[b], radius=5, color=colors[i])
-                        if line: self.vis3d.add_geometry(line, reset_bounding_box=False)
-                    
-                    
-
-            if self.show_scores:
-                cv2.putText(frame, f"Landmark score: {region.lm_score:.2f}", 
-                        (int(region.pd_box[0] * self.frame_size+10), int((region.pd_box[1]+region.pd_box[3])*self.frame_size+90)), 
-                        cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
-            if self.use_gesture and self.show_gesture:
-                cv2.putText(frame, region.gesture, (int(region.pd_box[0]*self.frame_size+10), int(region.pd_box[1]*self.frame_size-50)), 
-                        cv2.FONT_HERSHEY_PLAIN, 5, (0,1190,255), 3)
-            
-
-
-          
-    def recognize_gesture(self, r):           
-
-        def angle_with_y(v):
-            # v: 2d vector (x,y)
-            # Returns angle in degree ofv with y-axis of image plane
-            if v[1] == 0:
-                return 90
-            angle = atan2(v[0], v[1])
-            return np.degrees(angle)
-
-        # For the demo, we want to recognize the flag semaphore alphabet
-        # For this task, we just need to measure the angles of both arms with vertical
-        right_arm_angle = angle_with_y(r.landmarks_abs[14,:2] - r.landmarks_abs[12,:2])
-        left_arm_angle = angle_with_y(r.landmarks_abs[13,:2] - r.landmarks_abs[11,:2])
-        right_pose = int((right_arm_angle +202.5) / 45) 
-        left_pose = int((left_arm_angle +202.5) / 45) 
-        r.gesture = semaphore_flag.get((right_pose, left_pose), None)
-                
-    def run(self):
-
-        device = dai.Device(self.create_pipeline())
-        device.startPipeline()
-
-        # Define data queues 
-        if self.input_type == "internal":
-            q_video = device.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
-            q_pd_out = device.getOutputQueue(name="pd_out", maxSize=1, blocking=False)
-            q_lm_out = device.getOutputQueue(name="lm_out", maxSize=2, blocking=False)
-            q_lm_in = device.getInputQueue(name="lm_in")
-        else:
-            q_pd_in = device.getInputQueue(name="pd_in")
-            q_pd_out = device.getOutputQueue(name="pd_out", maxSize=4, blocking=True)
-            q_lm_out = device.getOutputQueue(name="lm_out", maxSize=4, blocking=True)
-            q_lm_in = device.getInputQueue(name="lm_in")
-
-        self.fps = FPS(mean_nb_frames=20)
-
-        seq_num = 0
-        nb_pd_inferences = 0
-        nb_lm_inferences = 0
-        glob_pd_rtrip_time = 0
-        glob_lm_rtrip_time = 0
-        while True:
-            self.fps.update()
-             
-            if self.input_type == "internal":
-                in_video = q_video.get()
-                video_frame = in_video.getCvFrame()
-                self.frame_size = video_frame.shape[0] # The image is square cropped on the device
-                self.pad_w = self.pad_h = 0
+        self.fps.update()
+           
+        if self.input_type == "rgb":
+            in_video = self.q_video.get()
+            video_frame = in_video.getCvFrame()
+            if self.pad_h:
+                square_frame = cv2.copyMakeBorder(video_frame, self.pad_h, self.pad_h, self.pad_w, self.pad_w, cv2.BORDER_CONSTANT)
             else:
-                if self.input_type == "image":
-                    vid_frame = self.img
-                else:
-                    ok, vid_frame = self.cap.read()
-                    if not ok:
-                        break
-                    
-                h, w = vid_frame.shape[:2]
-                if self.crop:
-                    # Cropping the long side to get a square shape
-                    self.frame_size = min(h, w)
-                    dx = (w - self.frame_size) // 2
-                    dy = (h - self.frame_size) // 2
-                    video_frame = vid_frame[dy:dy+self.frame_size, dx:dx+self.frame_size]
-                else:
-                    # Padding on the small side to get a square shape
-                    self.frame_size = max(h, w)
-                    self.pad_h = int((self.frame_size - h)/2)
-                    self.pad_w = int((self.frame_size - w)/2)
-                    video_frame = cv2.copyMakeBorder(vid_frame, self.pad_h, self.pad_h, self.pad_w, self.pad_w, cv2.BORDER_CONSTANT)
+                square_frame = video_frame
+            # For debugging
+            # if not self.crop:
+            #     lb = self.q_lb_out.get()
+            #     if lb:
+            #         lb = lb.getCvFrame()
+            #         cv2.imshow("letterbox", lb)
+        else:
+            if self.input_type == "image":
+                frame = self.img.copy()
+            else:
+                ok, frame = self.cap.read()
+                if not ok:
+                    return None, None
+            # Cropping and/or padding of the video frame
+            video_frame = frame[self.crop_h:self.crop_h+self.frame_size, self.crop_w:self.crop_w+self.frame_size]
+            if self.pad_h or self.pad_w:
+                square_frame = cv2.copyMakeBorder(video_frame, self.pad_h, self.pad_h, self.pad_w, self.pad_w, cv2.BORDER_CONSTANT)
+            else:
+                square_frame = video_frame
 
+        if self.force_detection or not self.use_previous_landmarks:
+            if self.input_type == "rgb":
+                self.q_pre_pd_manip_cfg.send(self.cfg_pre_pd)
+            else:
                 frame_nn = dai.ImgFrame()
-                frame_nn.setSequenceNum(seq_num)
+                frame_nn.setTimestamp(time.monotonic())
                 frame_nn.setWidth(self.pd_input_length)
                 frame_nn.setHeight(self.pd_input_length)
-                frame_nn.setData(to_planar(video_frame, (self.pd_input_length, self.pd_input_length)))
+                frame_nn.setData(to_planar(square_frame, (self.pd_input_length, self.pd_input_length)))
                 pd_rtrip_time = now()
-                q_pd_in.send(frame_nn)
-                
-
-                seq_num += 1
-
-            annotated_frame = video_frame.copy()
+                self.q_pd_in.send(frame_nn)
 
             # Get pose detection
-            inference = q_pd_out.get()
-            if self.input_type != "internal": 
+            inference = self.q_pd_out.get()
+            if self.input_type != "rgb": 
                 pd_rtrip_time = now() - pd_rtrip_time
-                glob_pd_rtrip_time += pd_rtrip_time
-            self.pd_postprocess(inference)
-            self.pd_render(annotated_frame)
-            nb_pd_inferences += 1
-
-            # Landmarks
-            self.nb_active_regions = 0
-            if self.show_3d:
-                self.vis3d.clear_geometries()
-                self.vis3d.add_geometry(self.grid_floor, reset_bounding_box=False)
-                self.vis3d.add_geometry(self.grid_wall, reset_bounding_box=False)
-            for i,r in enumerate(self.regions):
-                frame_nn = mpu.warp_rect_img(r.rect_points, video_frame, self.lm_input_length, self.lm_input_length)
-                nn_data = dai.NNData()   
-                nn_data.setLayer("input_1", to_planar(frame_nn, (self.lm_input_length, self.lm_input_length)))
-                if i == 0: lm_rtrip_time = now() # We measure only for the first region
-                q_lm_in.send(nn_data)
-                
-                # Get landmarks
-                inference = q_lm_out.get()
-                if i == 0: 
-                    lm_rtrip_time = now() - lm_rtrip_time
-                    glob_lm_rtrip_time += lm_rtrip_time
-                    nb_lm_inferences += 1
-                self.lm_postprocess(r, inference)
-                self.lm_render(annotated_frame, r)
-            if self.show_3d:
-                self.vis3d.poll_events()
-                self.vis3d.update_renderer()
-            if self.smoothing and self.nb_active_regions == 0:
-                self.filter.reset()
-
-            if self.input_type != "internal" and not self.crop:
-                annotated_frame = annotated_frame[self.pad_h:self.pad_h+h, self.pad_w:self.pad_w+w]
-
-            if self.show_fps:
-                self.fps.display(annotated_frame, orig=(50,50), size=1, color=(240,180,100))
-            cv2.imshow("Blazepose", annotated_frame)
-
-            if self.output:
-                self.output.write(annotated_frame)
-
-            key = cv2.waitKey(1) 
-            if key == ord('q') or key == 27:
-                break
-            elif key == 32:
-                # Pause on space bar
-                cv2.waitKey(0)
-            elif key == ord('1'):
-                self.show_pd_box = not self.show_pd_box
-            elif key == ord('2'):
-                self.show_pd_kps = not self.show_pd_kps
-            elif key == ord('3'):
-                self.show_rot_rect = not self.show_rot_rect
-            elif key == ord('4'):
-                self.show_landmarks = not self.show_landmarks
-            elif key == ord('5'):
-                self.show_scores = not self.show_scores
-            elif key == ord('6'):
-                self.show_gesture = not self.show_gesture
-            elif key == ord('f'):
-                self.show_fps = not self.show_fps
-
-        # Print some stats
-        print(f"# pose detection inferences : {nb_pd_inferences}")
-        print(f"# landmark inferences       : {nb_lm_inferences}")
-        if self.input_type != "internal" and nb_pd_inferences != 0: print(f"Pose detection round trip   : {glob_pd_rtrip_time/nb_pd_inferences*1000:.1f} ms")
-        if nb_lm_inferences != 0:  print(f"Landmark round trip         : {glob_lm_rtrip_time/nb_lm_inferences*1000:.1f} ms")
-
-        if self.output:
-            self.output.release()
-           
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', type=str,  
-                        help="Path to video or image file to use as input (default: internal camera")
-    parser.add_argument('-g', '--gesture', action="store_true", 
-                        help="enable gesture recognition")
-    parser.add_argument("--pd_m", type=str,
-                        help="Path to an .blob file for pose detection model")
-    parser.add_argument("--lm_m", type=str,
-                        help="Path to an .blob file for landmark model")
-    parser.add_argument('-c', '--crop', action="store_true", 
-                        help="Center crop frames to a square shape before feeding pose detection model")
-    parser.add_argument('-u', '--upper_body', action="store_true", 
-                        help="Use an upper body model")
-    parser.add_argument('--no_smoothing', action="store_true", 
-                        help="Disable smoothing filter")
-    parser.add_argument('--filter_window_size', type=int, default=5,
-                        help="Smoothing filter window size. Higher value adds to lag and to stability (default=%(default)i)")                    
-    parser.add_argument('--filter_velocity_scale', type=float, default=10,
-                        help="Smoothing filter velocity scale. Lower value adds to lag and to stability (default=%(default)s)")                    
-    parser.add_argument('-3', '--show_3d', action="store_true", 
-                        help="Display skeleton in 3d in a separate window (valid only for full body landmark model)")
-    parser.add_argument("-o","--output",
-                        help="Path to output video file")
-    parser.add_argument('--multi_detection', action="store_true", 
-                        help="Force multiple person detection (at your own risk)")
-    parser.add_argument('--internal_fps', type=int, default=15,
-                        help="Fps of internal color camera. Too high value lower NN fps (default=%(default)i)")                    
-
-
-        
-
-    args = parser.parse_args()
-
-    if not args.pd_m:
-        args.pd_m = POSE_DETECTION_MODEL
-    if not args.lm_m:
-        if args.upper_body:
-            args.lm_m = UPPER_BODY_LANDMARK_MODEL
+                self.glob_pd_rtrip_time += pd_rtrip_time
+            body = self.pd_postprocess(inference)
+            self.nb_pd_inferences += 1
         else:
-            args.lm_m = FULL_BODY_LANDMARK_MODEL
-    ht = BlazeposeDepthai(input_src=args.input, 
-                    pd_path=args.pd_m,
-                    lm_path=args.lm_m,
-                    full_body=not args.upper_body,
-                    smoothing=not args.no_smoothing,
-                    filter_window_size=args.filter_window_size,
-                    filter_velocity_scale=args.filter_velocity_scale,
-                    use_gesture=args.gesture,
-                    show_3d=args.show_3d,
-                    crop=args.crop,
-                    multi_detection=args.multi_detection,
-                    output=args.output,
-                    internal_fps=args.internal_fps)
-    ht.run()
+            body = self.body_from_landmarks
+            mpu.detections_to_rect(body) # self.regions.pd_kps are initialized from landmarks on previous frame
+            mpu.rect_transformation(body, self.frame_size, self.frame_size, self.rect_transf_scale)
+
+
+        # Landmarks
+        if body:
+            frame_nn = mpu.warp_rect_img(body.rect_points, square_frame, self.lm_input_length, self.lm_input_length)
+            frame_nn = frame_nn / 255.
+            nn_data = dai.NNData()   
+            nn_data.setLayer("input_1", to_planar(frame_nn, (self.lm_input_length, self.lm_input_length)))
+            lm_rtrip_time = now()
+            self.q_lm_in.send(nn_data)
+            
+            # Get landmarks
+            inference = self.q_lm_out.get()
+            lm_rtrip_time = now() - lm_rtrip_time
+            self.glob_lm_rtrip_time += lm_rtrip_time
+            self.nb_lm_inferences += 1
+            self.lm_postprocess(body, inference)
+            if body.lm_score < self.lm_score_thresh:
+                body = None
+                self.use_previous_landmarks = False
+                if self.smoothing: self.filter.reset()
+            else:
+                self.use_previous_landmarks = True
+            
+        else:
+            self.use_previous_landmarks = False
+            if self.smoothing: self.filter.reset()
+
+        return video_frame, body
+
+
+    def exit(self):
+        self.device.close()
+        # Print some stats
+        print(f"FPS : {self.fps.get_global():.1f} f/s (# frames = {self.nb_frames})")
+        print(f"# pose detection inferences : {self.nb_pd_inferences}")
+        print(f"# landmark inferences       : {self.nb_lm_inferences}")
+        if self.input_type != "rgb" and self.nb_pd_inferences != 0: print(f"Pose detection round trip   : {self.glob_pd_rtrip_time/self.nb_pd_inferences*1000:.1f} ms")
+        if self.nb_lm_inferences != 0:  print(f"Landmark round trip         : {self.glob_lm_rtrip_time/self.nb_lm_inferences*1000:.1f} ms")
+
+           
