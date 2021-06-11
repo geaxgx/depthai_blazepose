@@ -106,7 +106,7 @@ class BlazeposeDepthai:
                 elif "full" in str(self.lm_model):
                     self.internal_fps = 14
                 else:
-                    self.internal_fps = 28
+                    self.internal_fps = 27
             else:
                 self.internal_fps = internal_fps
             print(f"Internal camera FPS set to: {self.internal_fps}")

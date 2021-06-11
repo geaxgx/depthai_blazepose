@@ -1,16 +1,30 @@
 # Blazepose tracking with DepthAI
 
-Running Google Mediapipe body pose tracking models on [DepthAI](https://docs.luxonis.com/en/gen2/) hardware (OAK-1, OAK-D, ...). **Updated with the models "full" and "lite" of mediapipe 0.8.4 2021/05** ("heavy" is unusable on MYRIADX). The previous version of landmark model from mediapipe 0.8.3.1 has been kept as it offers an intermediate speed between the new "full" and "lite" models.
+Running Google Mediapipe single body pose tracking models on [DepthAI](https://docs.luxonis.com/en/gen2/) hardware (OAK-1, OAK-D, ...). 
+
+The Blazepose landmark models available in this repository are :
+- the version "full" and "lite" of mediapipe 0.8.4 (2021/05) ("heavy" is unusable on MYRIADX),
+- the older full body model from mediapipe 0.8.3.1, as it offers an intermediate inference speed between the new "full" and "lite" models.
+The pose detection model comes from mediapipe 0.8.4 and is compatible with the 3 landmark models.
+
+
+![Demo](img/taichi.gif)
 
 For the competitor Movenet on DepthAI, please visit : [depthai_movenet](https://github.com/geaxgx/depthai_movenet)
 
 For an OpenVINO version of Blazepose, please visit : [openvino_blazepose](https://github.com/geaxgx/openvino_blazepose)
 
-![Demo](img/taichi.gif)
+
 
 ## Architecture: Host mode vs Edge mode
+Two modes are available:
+- **Host mode :** aside the neural networks that run on the device, almost all the processing is run on the host (the only processing done on the device is the letterboxing operation before the pose detection network when using the device camera as video source). **Use this mode when you want to infer on external input source (videos, images).**
+- **Edge mode :** most of the processing (neural networks, post-processings, image manipulations, ) is run on the device thaks to the depthai scripting node feature. It works only with the device camera but is **definitely the best option when working with the internal camera** (faster than in Host mode). The data exchanged between the host and the device is minimal: the landmarks of detected body (~2kB/frame), and optionally the device video frame.
+
 ![Host mode](img/pipeline_host_mode.png)
 ![Edge mode](img/pipeline_edge_mode.png)
+
+Note : 
 
 ## Install
 
@@ -94,7 +108,7 @@ optional arguments:
 
     Note: by default, the default internal camera FPS depends on the model. These default values are based on my own observations. **Please, don't hesitate to play with this parameter to find the optimal value.** If you observe that your FPS is well below the default value, you should lower the FPS with this option until the set FPS is just above the observed FPS.
 
-- When using the internal camera, you may not need to work with the full resolution. You can work with a lower resolution (and win a bit of FPS) by using this option: 
+- When using the internal camera, you probably don't need to work with the full resolution. You can set a lower resolution (and win a bit of FPS) by using this option: 
 
     ```python3 demo.py --internal_frame_size 450```
 
@@ -110,16 +124,15 @@ optional arguments:
 |f|Show/hide FPS|
 
 
-
-
 ## The models 
 You can directly find the model files (.xml and .bin) under the 'models' directory. Below I describe how to get the files in case you need to regenerate the models.
 
 1) Clone this github repository in a local directory (DEST_DIR)
-2) In DEST_DIR/models directory, download the source tflite models from Mediapipe:
-* [Pose detection model](https://github.com/google/mediapipe/blob/master/mediapipe/modules/pose_detection/pose_detection.tflite)
-* [Full pose landmark model](https://github.com/google/mediapipe/tree/master/mediapipe/modules/pose_landmark/pose_landmark_full.tflite)
-* [Lite body pose landmark model](https://github.com/google/mediapipe/tree/master/mediapipe/modules/pose_landmark/pose_landmark_lite.tflite)
+2) In DEST_DIR/models directory, download the tflite models from [this archive](https://drive.google.com/file/d/1CY1-ZsAFvbKk1-Kh2wgiECaBEtHcFE0Q/view?usp=sharing). The archive contains:
+* Pose detection model from Mediapipe 0.8.4, 
+* Full pose landmark modelfrom Mediapipe 0.8.4,
+* Lite body pose landmark model from Mediapipe 0.8.4,
+* Full body landmark model from Mediapipe 0.8.3.1.
 
 Note that Mediapipe is also publishing an "Heavy" version of the model but [this version, after conversion, in FP16 is unusable on MYRIADX](https://github.com/PINTO0309/tflite2tensorflow/issues/9).
 3) Install the amazing [PINTO's tflite2tensorflow tool](https://github.com/PINTO0309/tflite2tensorflow). Use the docker installation which includes many packages including a recent version of Openvino.
@@ -131,17 +144,72 @@ cd workdir/models
 ```
 The *convert_models.sh* converts the tflite models in tensorflow (.pb), then converts the pb file into Openvino IR format (.xml and .bin), and finally converts the IR files in MyriadX format (.blob).
 
-By default, the number of SHAVES associated with the blob files is 4. In case you want to generate new blobs with different number of shaves, you can use the script *gen_blob_shave.sh*:
+5) By default, the number of SHAVES associated with the blob files is 4. In case you want to generate new blobs with different number of shaves, you can use the script *gen_blob_shave.sh*:
 ```
 # Example: to generate blobs for 6 shaves
 ./gen_blob_shave.sh -m pd -n 6        # will generate pose_detection_sh6.blob
-./gen_blob_shave.sh -m lm_full -n 6   # will generate pose_landmark_full_body_sh6.blob
+./gen_blob_shave.sh -m full -n 6   # will generate pose_landmark_full_sh6.blob
 ```
 
 
 **Explanation about the Model Optimizer params :**
 - The preview of the OAK-* color camera outputs BGR [0, 255] frames . The original tflite pose detection model is expecting RGB [-1, 1] frames. ```--reverse_input_channels``` converts BGR to RGB. ```--mean_values [127.5,127.5,127.5] --scale_values [127.5,127.5,127.5]``` normalizes the frames between [-1, 1].
-- ~~The images which are fed to the landmark model are built on the host in a format similar to the OAK-* cameras (BGR [0, 255]). The original landmark models are expecting RGB [0, 1] frames. Therefore, the following arguments are used ```--reverse_input_channels --scale_values [255.0, 255.0, 255.0]```~~
+- The original landmark model is expecting RGB [0, 1] frames. Therefore, the following arguments are used ```--reverse_input_channels```, but unlike the detection model, we choose to do the normalization in the python code and not in the models (via ```--scale_values```). Indeed, we have observed a better accuracy with FP16 models when doing the normalization of the inputs outside of the models ([a possible explanation](https://github.com/PINTO0309/tflite2tensorflow/issues/9#issuecomment-842460014)).
+
+## Code
+
+To facilitate reusability, the code is splitted in 2 classes:
+-  **BlazeposeDepthai**, which is responsible of computing the body landmarks. The importation of this class depends on the mode:
+```
+# For Host mode:
+from BlazeposeDepthai import BlazeposeDepthai
+```
+```
+# For Edge mode:
+from BlazeposeDepthaiEdge import BlazeposeDepthai
+```
+- **BlazeposeRenderer**, which is responsible of rendering the landmarks and the skeleton on the video frame. 
+
+This way, you can replace the renderer from this repository and write and personalize your own renderer (for some projects, you may not even need a renderer).
+
+The file ```demo.py``` is a representative example of how to use these classes:
+```
+from BlazeposeDepthaiEdge import BlazeposeDepthai
+from BlazeposeRenderer import BlazeposeRenderer
+
+# The argparse stuff has been removed to keep only the important code
+
+pose = BlazeposeDepthai(input_src=args.input, 
+            pd_model=args.pd_m,
+            lm_model=args.lm_m,
+            smoothing=not args.no_smoothing,
+            filter_window_size=args.filter_window_size,
+            filter_velocity_scale=args.filter_velocity_scale,                
+            crop=args.crop,
+            internal_fps=args.internal_fps,
+            internal_frame_height=args.internal_frame_height,
+            force_detection=args.force_detection,
+            stats=args.stats,
+            trace=args.trace)   
+
+renderer = BlazeposeRenderer(
+                pose, 
+                show_3d=args.show_3d, 
+                output=args.output)
+
+while True:
+    # Run blazepose on next frame
+    frame, body = pose.next_frame()
+    if frame is None: break
+    # Draw 2d skeleton
+    frame = renderer.draw(frame, body)
+    key = renderer.waitKey(delay=1)
+    if key == 27 or key == ord('q'):
+        break
+renderer.exit()
+pose.exit()
+```
+
 
 ## Examples
 

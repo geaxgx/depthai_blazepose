@@ -4,7 +4,7 @@ usage ()
 {
 	echo "Generate a new blob with a specified number of shaves and cmx (nb cmx = nb shaves)"
 	echo "Usage: ${0} -m model -n nb_shaves"
-	echo "model = 'pd' for pose detection, 'lm_full' or 'lm_lite' or 'lm_831' for landmarks"
+	echo "model = 'pd' for pose detection, 'full' or 'lite' or '831' for landmarks"
 	echo "nb_shaves must be between 1 and 13"
 }
 
@@ -41,15 +41,19 @@ fi
 if [ $model == "pd" ]
 then
 	model="pose_detection"
-elif [ $model == "lm_full" ]
+	input_precision="u8"
+elif [ $model == "full" ]
 then
 	model="pose_landmark_full"
-elif [ $model == "lm_lite" ]
+	input_precision="fp16"
+elif [ $model == "lite" ]
 then
 	model="pose_landmark_lite"
-elif [ $model == "lm_831" ]
+	input_precision="fp16"
+elif [ $model == "831" ]
 then
 	model="pose_landmark_full_0831"
+	input_precision="fp16"
 else
 	echo "Invalid model !"
 	usage
@@ -83,5 +87,5 @@ echo Shaves $nb_shaves
 source /opt/intel/openvino_2021/bin/setupvars.sh
 
 
-/opt/intel/openvino_2021/deployment_tools/inference_engine/lib/intel64/myriad_compile -m $model_xml -ip u8 -VPU_NUMBER_OF_SHAVES $nb_shaves -VPU_NUMBER_OF_CMX_SLICES $nb_shaves -o $model_blob
+/opt/intel/openvino_2021/deployment_tools/inference_engine/lib/intel64/myriad_compile -m $model_xml -ip $input_precision -VPU_NUMBER_OF_SHAVES $nb_shaves -VPU_NUMBER_OF_CMX_SLICES $nb_shaves -o $model_blob
 

@@ -99,11 +99,11 @@ class BlazeposeDepthai:
             self.input_type = "rgb" # OAK* internal color camera
             if internal_fps is None:
                 if "831" in str(lm_model):
-                    self.internal_fps = 15
+                    self.internal_fps = 10
                 elif "full" in str(lm_model):
-                    self.internal_fps = 12
+                    self.internal_fps = 8
                 else: 
-                    self.internal_fps = 20
+                    self.internal_fps = 13
             else:
                 self.internal_fps = internal_fps
             print(f"Internal camera FPS set to: {self.internal_fps}")

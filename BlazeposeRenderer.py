@@ -43,7 +43,7 @@ class BlazeposeRenderer:
         self.show_rot_rect = False
         self.show_landmarks = True
         self.show_score = False
-        self.show_fps = False
+        self.show_fps = True
 
         if self.show_3d:
 
