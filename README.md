@@ -21,6 +21,13 @@ Two modes are available:
 - **Host mode :** aside the neural networks that run on the device, almost all the processing is run on the host (the only processing done on the device is the letterboxing operation before the pose detection network when using the device camera as video source). **Use this mode when you want to infer on external input source (videos, images).**
 - **Edge mode :** most of the processing (neural networks, post-processings, image manipulations, ) is run on the device thaks to the depthai scripting node feature. It works only with the device camera but is **definitely the best option when working with the internal camera** (faster than in Host mode). The data exchanged between the host and the device is minimal: the landmarks of detected body (~2kB/frame), and optionally the device video frame.
 
+|Landmark model (Edge mode)|FPS|
+|-|-|
+|Full|14|
+|Lite|27|
+|831 (mediapipe 0.8.3.1)|18|
+<br>
+
 ![Host mode](img/pipeline_host_mode.png)
 ![Edge mode](img/pipeline_edge_mode.png)
 
