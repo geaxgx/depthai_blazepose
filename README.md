@@ -24,7 +24,7 @@ Two modes are available:
 ![Host mode](img/pipeline_host_mode.png)
 ![Edge mode](img/pipeline_edge_mode.png)
 
-Note : 
+*Note : the Edge mode schema is missing a custom NeuralNetwork node between the ImageManip node on the right and the landmark NeuralNetwork. The custom NeuralNetwork runs a very simple model that normalize (divide by 255) the output image from the ImageManip node. This is a temporary fix, can be removed when depthai ImageManip node will support setFrameType(RGBF16F16F16p).*
 
 ## Install
 
@@ -124,7 +124,7 @@ optional arguments:
 |f|Show/hide FPS|
 
 
-## The models 
+## Mediapipe models 
 You can directly find the model files (.xml and .bin) under the 'models' directory. Below I describe how to get the files in case you need to regenerate the models.
 
 1) Clone this github repository in a local directory (DEST_DIR)
@@ -151,10 +151,20 @@ The *convert_models.sh* converts the tflite models in tensorflow (.pb), then con
 ./gen_blob_shave.sh -m full -n 6   # will generate pose_landmark_full_sh6.blob
 ```
 
-
 **Explanation about the Model Optimizer params :**
 - The preview of the OAK-* color camera outputs BGR [0, 255] frames . The original tflite pose detection model is expecting RGB [-1, 1] frames. ```--reverse_input_channels``` converts BGR to RGB. ```--mean_values [127.5,127.5,127.5] --scale_values [127.5,127.5,127.5]``` normalizes the frames between [-1, 1].
 - The original landmark model is expecting RGB [0, 1] frames. Therefore, the following arguments are used ```--reverse_input_channels```, but unlike the detection model, we choose to do the normalization in the python code and not in the models (via ```--scale_values```). Indeed, we have observed a better accuracy with FP16 models when doing the normalization of the inputs outside of the models ([a possible explanation](https://github.com/PINTO0309/tflite2tensorflow/issues/9#issuecomment-842460014)).
+
+## Custom models
+
+The `custom_models` directory contains the code to build the following custom models:
+- DetectionBestCandidate: this model processes the outputs of the pose detection network (a 1x2254x1 tensor for the scores and a 1x2254x12 for the regressors) and yields the regressor with the highest score.
+- DivideBy255: this model transforms an 256x256 RGB888p ([0, 255]) image to a 256x256 RGBF16F16F16p image ([0., 1.]).
+
+The method used to build these models is well explained on the [rahulrav's blog](https://rahulrav.com/blog/depthai_camera.html).
+
+
+
 
 ## Code
 
