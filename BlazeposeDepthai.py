@@ -450,10 +450,11 @@ class BlazeposeDepthai:
     def exit(self):
         self.device.close()
         # Print some stats
-        print(f"FPS : {self.fps.get_global():.1f} f/s (# frames = {self.nb_frames})")
-        print(f"# pose detection inferences : {self.nb_pd_inferences}")
-        print(f"# landmark inferences       : {self.nb_lm_inferences}")
-        if self.input_type != "rgb" and self.nb_pd_inferences != 0: print(f"Pose detection round trip   : {self.glob_pd_rtrip_time/self.nb_pd_inferences*1000:.1f} ms")
-        if self.nb_lm_inferences != 0:  print(f"Landmark round trip         : {self.glob_lm_rtrip_time/self.nb_lm_inferences*1000:.1f} ms")
+        if self.stats:
+            print(f"FPS : {self.fps.get_global():.1f} f/s (# frames = {self.nb_frames})")
+            print(f"# pose detection inferences : {self.nb_pd_inferences}")
+            print(f"# landmark inferences       : {self.nb_lm_inferences}")
+            if self.input_type != "rgb" and self.nb_pd_inferences != 0: print(f"Pose detection round trip   : {self.glob_pd_rtrip_time/self.nb_pd_inferences*1000:.1f} ms")
+            if self.nb_lm_inferences != 0:  print(f"Landmark round trip         : {self.glob_lm_rtrip_time/self.nb_lm_inferences*1000:.1f} ms")
 
            

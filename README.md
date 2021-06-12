@@ -5,6 +5,7 @@ Running Google Mediapipe single body pose tracking models on [DepthAI](https://d
 The Blazepose landmark models available in this repository are :
 - the version "full" and "lite" of mediapipe 0.8.4 (2021/05) ("heavy" is unusable on MYRIADX),
 - the older full body model from mediapipe 0.8.3.1, as it offers an intermediate inference speed between the new "full" and "lite" models.
+
 The pose detection model comes from mediapipe 0.8.4 and is compatible with the 3 landmark models.
 
 
@@ -31,7 +32,7 @@ Two modes are available:
 ![Host mode](img/pipeline_host_mode.png)
 ![Edge mode](img/pipeline_edge_mode.png)
 
-*Note : the Edge mode schema is missing a custom NeuralNetwork node between the ImageManip node on the right and the landmark NeuralNetwork. The custom NeuralNetwork runs a very simple model that normalize (divide by 255) the output image from the ImageManip node. This is a temporary fix, can be removed when depthai ImageManip node will support setFrameType(RGBF16F16F16p).*
+*Note : the Edge mode schema is missing a custom NeuralNetwork node between the ImageManip node on the right and the landmark NeuralNetwork. This custom NeuralNetwork runs a very simple model that normalize (divide by 255) the output image from the ImageManip node. This is a temporary fix, should be removed when depthai ImageManip node will support setFrameType(RGBF16F16F16p).*
 
 ## Install
 
@@ -136,12 +137,13 @@ You can directly find the model files (.xml and .bin) under the 'models' directo
 
 1) Clone this github repository in a local directory (DEST_DIR)
 2) In DEST_DIR/models directory, download the tflite models from [this archive](https://drive.google.com/file/d/1CY1-ZsAFvbKk1-Kh2wgiECaBEtHcFE0Q/view?usp=sharing). The archive contains:
-* Pose detection model from Mediapipe 0.8.4, 
-* Full pose landmark modelfrom Mediapipe 0.8.4,
-* Lite body pose landmark model from Mediapipe 0.8.4,
-* Full body landmark model from Mediapipe 0.8.3.1.
+    * Pose detection model from Mediapipe 0.8.4, 
+    * Full pose landmark modelfrom Mediapipe 0.8.4,
+    * Lite body pose landmark model from Mediapipe 0.8.4,
+    * Full body landmark model from Mediapipe 0.8.3.1.
 
 Note that Mediapipe is also publishing an "Heavy" version of the model but [this version, after conversion, in FP16 is unusable on MYRIADX](https://github.com/PINTO0309/tflite2tensorflow/issues/9).
+
 3) Install the amazing [PINTO's tflite2tensorflow tool](https://github.com/PINTO0309/tflite2tensorflow). Use the docker installation which includes many packages including a recent version of Openvino.
 3) From DEST_DIR, run the tflite2tensorflow container:  ```./docker_tflite2tensorflow.sh```
 4) From the running container: 
