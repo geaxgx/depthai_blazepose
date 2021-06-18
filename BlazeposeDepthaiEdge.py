@@ -186,11 +186,8 @@ class BlazeposeDepthai:
             cam.video.link(cam_out.input)
 
 
-        # Define dispatcher script node
+        # Define manager script node
         manager_script = pipeline.create(dai.node.Script)
-        manager_script.inputs['frame'].setBlocking(False)
-        manager_script.inputs['frame'].setQueueSize(1)
-
         manager_script.setScriptData(self.build_manager_script())
 
         # Define pose detection pre processing (resize preview to (self.pd_input_length, self.pd_input_length))
@@ -407,7 +404,7 @@ class BlazeposeDepthai:
         self.device.close()
         # Print some stats
         if self.stats:
-            print(f"FPS : {self.fps.get_global():.1f} f/s (# frames = {self.nb_frames})")
+            print(f"FPS : {self.fps.get_global():.1f} f/s (# frames = {self.fps.nbf})")
             print(f"# frames without body       : {self.nb_frames_no_body}")
             print(f"# pose detection inferences : {self.nb_pd_inferences}")
             print(f"# landmark inferences       : {self.nb_lm_inferences} - # after pose detection: {self.nb_lm_inferences - self.nb_lm_inferences_after_landmarks_ROI} - # after landmarks ROI prediction: {self.nb_lm_inferences_after_landmarks_ROI}")

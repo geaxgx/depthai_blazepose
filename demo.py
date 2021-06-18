@@ -1,4 +1,4 @@
-import cv2
+#!/usr/bin/env python3
 
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
