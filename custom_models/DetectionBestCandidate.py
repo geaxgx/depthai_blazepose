@@ -35,8 +35,9 @@ class DetectionBestCandidate(nn.Module):
         # The 8 following corresponds to 4 (x,y) normalized keypoints coordinates (useful for determining rotated rectangle)
         # For full body, keypoints 1 and 2 are used.
         # For upper body, keypoints 3 and 4 are used.
+        # Here we are only interested in full body
 
-        # detections_to_rect
+        # detections_to_rect (1st part)
         sqn_rr_center_xy = bbox[4:6]
         sqn_scale_xy = bbox[6:8]
 

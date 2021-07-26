@@ -1,22 +1,17 @@
 import numpy as np
-from collections import namedtuple
 import mediapipe_utils as mpu
 import cv2
 from pathlib import Path
 from FPS import FPS, now
-import argparse
-import os
+from math import sin, cos
 import depthai as dai
-
-import open3d as o3d
-from o3d_utils import create_segment, create_grid
-import time
+import time, sys
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-POSE_DETECTION_MODEL = SCRIPT_DIR / "models/pose_detection_sh4.blob"
-LANDMARK_MODEL_FULL = SCRIPT_DIR / "models/pose_landmark_full_sh4.blob"
-LANDMARK_MODEL_FULL_0831 = SCRIPT_DIR / "models/pose_landmark_full_0831_sh4.blob"
-LANDMARK_MODEL_LITE = SCRIPT_DIR / "models/pose_landmark_lite_sh4.blob"
+POSE_DETECTION_MODEL = str(SCRIPT_DIR / "models/pose_detection_sh4.blob")
+LANDMARK_MODEL_FULL = str(SCRIPT_DIR / "models/pose_landmark_full_sh4.blob")
+LANDMARK_MODEL_HEAVY = str(SCRIPT_DIR / "models/pose_landmark_heavy_sh4.blob")
+LANDMARK_MODEL_LITE = str(SCRIPT_DIR / "models/pose_landmark_lite_sh4.blob")
 
 
 def to_planar(arr: np.ndarray, shape: tuple) -> np.ndarray:
@@ -36,9 +31,10 @@ class BlazeposeDepthai:
     - lm_model: Blazepose landmark model blob file
                     - None or "full": the default blob file LANDMARK_MODEL_FULL,
                     - "lite": the default blob file LANDMARK_MODEL_LITE,
-                    - "831": the full model from previous version of mediapipe (0.8.3.1) LANDMARK_MODEL_FULL_0831,
+                    - "heavy": default blob file LANDMARK_MODEL_HEAVY,
                     - a path of a blob file. 
     - lm_score_thresh : confidence score to determine whether landmarks prediction is reliable (a float between 0 and 1).
+    - xyz: boolean, when True get the (x, y, z) coords of the reference point (center of the hips) (if the device supports depth measures).
     - crop : boolean which indicates if square cropping is done or not
     - smoothing: boolean which indicates if smoothing filtering is applied
     - filter_window_size and filter_velocity_scale:
@@ -49,6 +45,7 @@ class BlazeposeDepthai:
             - lower filter_velocity_scale adds to lag and to stability
 
     - internal_fps : when using the internal color camera as input source, set its FPS to this value (calling setFps()).
+    - resolution : sensor resolution "full" (1920x1080) or "ultra" (3840x2160),
     - internal_frame_height : when using the internal color camera, set the frame height (calling setIspScale()).
                                 The width is calculated accordingly to height and depends on value of 'crop'
     - stats : boolean, when True, display some statistics when exiting.   
@@ -60,11 +57,11 @@ class BlazeposeDepthai:
                 pd_score_thresh=0.5,
                 lm_model=None,
                 lm_score_thresh=0.7,
+                xyz=False,
                 crop=False,
                 smoothing= True,
-                filter_window_size=5,
-                filter_velocity_scale=10,
                 internal_fps=None,
+                resolution="full",
                 internal_frame_height=1080,
                 stats=False,
                 trace=False,
@@ -78,9 +75,8 @@ class BlazeposeDepthai:
             self.lm_model = LANDMARK_MODEL_FULL
         elif lm_model == "lite":
             self.lm_model = LANDMARK_MODEL_LITE
-        elif lm_model == "831":
-            self.lm_model = LANDMARK_MODEL_FULL_0831
-            self.rect_transf_scale = 1.5
+        elif lm_model == "heavy":
+            self.lm_model = LANDMARK_MODEL_HEAVY
         else:
             self.lm_model = lm_model
         print(f"Landmarks using blob file : {self.lm_model}")
@@ -92,37 +88,61 @@ class BlazeposeDepthai:
         self.internal_fps = internal_fps     
         self.stats = stats
         self.force_detection = force_detection
+        self.presence_threshold = 0.5
+        self.visibility_threshold = 0.5
+
+        self.device = dai.Device()
+        self.xyz = False
         
         if input_src == None or input_src == "rgb" or input_src == "rgb_laconic":
             # Note that here (in Host mode), specifying "rgb_laconic" has no effect
             # Color camera frame is systematically transferred to the host
             self.input_type = "rgb" # OAK* internal color camera
             if internal_fps is None:
-                if "831" in str(lm_model):
+                if "heavy" in str(lm_model):
                     self.internal_fps = 10
                 elif "full" in str(lm_model):
                     self.internal_fps = 8
-                else: 
+                else: # Light
                     self.internal_fps = 13
             else:
                 self.internal_fps = internal_fps
             print(f"Internal camera FPS set to: {self.internal_fps}")
+            if resolution == "full":
+                self.resolution = (1920, 1080)
+            elif resolution == "ultra":
+                self.resolution = (3840, 2160)
+            else:
+                print(f"Error: {resolution} is not a valid resolution !")
+                sys.exit()
+            print("Sensor resolution:", self.resolution)
 
-            self.video_fps = internal_fps # Used when saving the output in a video file. Should be close to the real fps
+            self.video_fps = self.internal_fps # Used when saving the output in a video file. Should be close to the real fps
+
+            if xyz:
+                # Check if the device supports stereo
+                cameras = self.device.getConnectedCameras()
+                if dai.CameraBoardSocket.LEFT in cameras and dai.CameraBoardSocket.RIGHT in cameras:
+                    self.xyz = True
+                else:
+                    print("Warning: depth unavailable on this device, 'xyz' argument is ignored")
 
             if self.crop:
                 self.frame_size, self.scale_nd = mpu.find_isp_scale_params(internal_frame_height)
                 self.img_h = self.img_w = self.frame_size
                 self.pad_w = self.pad_h = 0
+                self.crop_w = (int(round(self.resolution[0] * self.scale_nd[0] / self.scale_nd[1])) - self.img_w) // 2
+
             else:
                 width, self.scale_nd = mpu.find_isp_scale_params(internal_frame_height * 1920 / 1080, is_height=False)
-                self.img_h = int(round(1080 * self.scale_nd[0] / self.scale_nd[1]))
-                self.img_w = int(round(1920 * self.scale_nd[0] / self.scale_nd[1]))
+                self.img_h = int(round(self.resolution[1] * self.scale_nd[0] / self.scale_nd[1]))
+                self.img_w = int(round(self.resolution[0] * self.scale_nd[0] / self.scale_nd[1]))
                 self.pad_h = (self.img_w - self.img_h) // 2
                 self.pad_w = 0
                 self.frame_size = self.img_w
+                self.crop_w = 0
 
-            print(f"Internal camera image size: {self.img_w} x {self.img_h} - pad_h: {self.pad_h}")
+            print(f"Internal camera image size: {self.img_w} x {self.img_h} - crop_w:{self.crop_w} pad_h: {self.pad_h}")
 
         elif input_src.endswith('.jpg') or input_src.endswith('.png') :
             self.input_type= "image"
@@ -162,7 +182,29 @@ class BlazeposeDepthai:
         self.nb_kps = 33 # Number of "viewable" keypoints
 
         if self.smoothing:
-            self.filter = mpu.LandmarksSmoothingFilter(filter_window_size, filter_velocity_scale, (self.nb_kps, 3))
+            
+            self.filter_landmarks = mpu.LandmarksSmoothingFilter(
+                frequency=self.video_fps,
+                min_cutoff=0.05,
+                beta=80,
+                derivate_cutoff=1
+            )
+            # landmarks_aux corresponds to the 2 landmarks used to compute the ROI in next frame
+            self.filter_landmarks_aux = mpu.LandmarksSmoothingFilter(
+                frequency=self.video_fps,
+                min_cutoff=0.01,
+                beta=10,
+                derivate_cutoff=1
+            )
+            self.filter_landmarks_world = mpu.LandmarksSmoothingFilter(
+                frequency=self.video_fps,
+                min_cutoff=0.1,
+                beta=40,
+                derivate_cutoff=1,
+                disable_value_scaling=True
+            )
+            if self.xyz:
+                self.filter_xyz = mpu.LowPassFilter(alpha=0.25)
     
         # Create SSD anchors 
         self.anchors = mpu.generate_blazepose_anchors()
@@ -172,13 +214,18 @@ class BlazeposeDepthai:
         # Define and start pipeline
         self.pd_input_length = 224
         self.lm_input_length = 256
-        self.device = dai.Device(self.create_pipeline())
-        print("Pipeline started")
+        usb_speed = self.device.getUsbSpeed()
+        self.device.startPipeline(self.create_pipeline())
+        print(f"Pipeline started - USB speed: {str(usb_speed).split('.')[-1]}")
 
         # Define data queues 
         if self.input_type == "rgb":
             self.q_video = self.device.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
             self.q_pre_pd_manip_cfg = self.device.getInputQueue(name="pre_pd_manip_cfg")
+            if self.xyz:
+                self.q_spatial_data = self.device.getOutputQueue(name="spatial_data_out", maxSize=1, blocking=False)
+                self.q_spatial_config = self.device.getInputQueue("spatial_calc_config_in")
+
         else:
             self.q_pd_in = self.device.getInputQueue(name="pd_in")
         self.q_pd_out = self.device.getOutputQueue(name="pd_out", maxSize=4, blocking=True)
@@ -199,8 +246,6 @@ class BlazeposeDepthai:
 
         self.use_previous_landmarks = False
 
-
-
         self.cfg_pre_pd = dai.ImageManipConfig()
         self.cfg_pre_pd.setResizeThumbnail(self.pd_input_length, self.pd_input_length)
 
@@ -208,14 +253,17 @@ class BlazeposeDepthai:
         print("Creating pipeline...")
         # Start defining a pipeline
         pipeline = dai.Pipeline()
-        pipeline.setOpenVINOVersion(version = dai.OpenVINO.Version.VERSION_2021_3)
+        # pipeline.setOpenVINOVersion(version = dai.OpenVINO.Version.VERSION_2021_4)
         
 
         if self.input_type == "rgb":
             # ColorCamera
             print("Creating Color Camera...")
             cam = pipeline.createColorCamera()
-            cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+            if self.resolution[0] == 1920:
+                cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+            else:
+                cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_4_K)
             cam.setInterleaved(False)
             cam.setIspScale(self.scale_nd[0], self.scale_nd[1])
             cam.setFps(self.internal_fps)
@@ -230,6 +278,8 @@ class BlazeposeDepthai:
             
             cam_out = pipeline.createXLinkOut()
             cam_out.setStreamName("cam_out")
+            cam_out.input.setQueueSize(1)
+            cam_out.input.setBlocking(False)
             cam.video.link(cam_out.input)
 
             # Define pose detection pre processing (resize preview to (self.pd_input_length, self.pd_input_length))
@@ -244,6 +294,52 @@ class BlazeposeDepthai:
             pre_pd_manip_cfg_in = pipeline.create(dai.node.XLinkIn)
             pre_pd_manip_cfg_in.setStreamName("pre_pd_manip_cfg")
             pre_pd_manip_cfg_in.out.link(pre_pd_manip.inputConfig)   
+
+            if self.xyz:
+
+                # For now, RGB needs fixed focus to properly align with depth.
+                # This value was used during calibration
+                cam.initialControl.setManualFocus(130)
+
+                mono_resolution = dai.MonoCameraProperties.SensorResolution.THE_400_P
+                left = pipeline.createMonoCamera()
+                left.setBoardSocket(dai.CameraBoardSocket.LEFT)
+                left.setResolution(mono_resolution)
+                left.setFps(self.internal_fps)
+
+                right = pipeline.createMonoCamera()
+                right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+                right.setResolution(mono_resolution)
+                right.setFps(self.internal_fps)
+
+                stereo = pipeline.createStereoDepth()
+                stereo.setConfidenceThreshold(230)
+                # LR-check is required for depth alignment
+                stereo.setLeftRightCheck(True)
+                stereo.setDepthAlign(dai.CameraBoardSocket.RGB)
+                stereo.setSubpixel(False)  # subpixel True -> latency
+
+                spatial_location_calculator = pipeline.createSpatialLocationCalculator()
+                spatial_location_calculator.setWaitForConfigInput(True)
+                spatial_location_calculator.inputDepth.setBlocking(False)
+                spatial_location_calculator.inputDepth.setQueueSize(1)
+
+                spatial_data_out = pipeline.createXLinkOut()
+                spatial_data_out.setStreamName("spatial_data_out")
+                spatial_data_out.input.setQueueSize(1)
+                spatial_data_out.input.setBlocking(False)
+
+                spatial_calc_config_in = pipeline.createXLinkIn()
+                spatial_calc_config_in.setStreamName("spatial_calc_config_in")
+
+                left.out.link(stereo.left)
+                right.out.link(stereo.right)    
+
+                stereo.depth.link(spatial_location_calculator.inputDepth)
+
+                spatial_location_calculator.out.link(spatial_data_out.input)
+                spatial_calc_config_in.out.link(spatial_location_calculator.inputConfig)
+
 
         # Define pose detection model
         print("Creating Pose Detection Neural Network...")
@@ -272,9 +368,6 @@ class BlazeposeDepthai:
         lm_nn.setBlobPath(str(Path(self.lm_model).resolve().absolute()))
         lm_nn.setNumInferenceThreads(1)
         # Landmark input
-        # if self.input_type == "rgb":
-        #     pre_lm_manip.out.link(lm_nn.input)
-        # else:
         lm_in = pipeline.createXLinkIn()
         lm_in.setStreamName("lm_in")
         lm_in.out.link(lm_nn.input)
@@ -286,6 +379,73 @@ class BlazeposeDepthai:
         print("Pipeline created.")
         return pipeline        
 
+    def is_present(self, body, lm_id):
+        return body.presence[lm_id] > self.presence_threshold
+    
+    def is_visible(self, body, lm_id):
+        if body.visibility[lm_id] > self.visibility_threshold and \
+            0 <= body.landmarks[lm_id][0] < self.img_w and \
+            0 <= body.landmarks[lm_id][1] < self.img_h :
+            return True
+        else:
+            return False
+
+    def query_body_xyz(self, body):
+        # We want the 3d position (x,y,z) in meters of the body reference keypoint
+        # in the camera coord system.
+        # The reference point is either :
+        # - the middle of the hips if both hips are present (presence of rght and left hips > threshold),
+        # - the middle of the shoulders in case at leats one hip is not present and
+        #   both shoulders are present,
+        # - None otherwise
+        if self.is_visible(body, mpu.KEYPOINT_DICT['right_hip']) and self.is_visible(body, mpu.KEYPOINT_DICT['left_hip']):
+            body.xyz_ref = "mid_hips"
+            body.xyz_ref_coords_pixel = np.mean([
+                body.landmarks[mpu.KEYPOINT_DICT['right_hip']][:2],
+                body.landmarks[mpu.KEYPOINT_DICT['left_hip']][:2]], 
+                axis=0)
+        elif self.is_visible(body, mpu.KEYPOINT_DICT['right_shoulder']) and self.is_visible(body, mpu.KEYPOINT_DICT['left_shoulder']):
+            body.xyz_ref = "mid_shoulders"
+            body.xyz_ref_coords_pixel = np.mean([
+                body.landmarks[mpu.KEYPOINT_DICT['right_shoulder']][:2],
+                body.landmarks[mpu.KEYPOINT_DICT['left_shoulder']][:2]],
+                axis=0) 
+        else:
+            body.xyz_ref = None
+            return
+        # Prepare the request to SpatialLocationCalculator
+        # ROI : small rectangular zone around the reference keypoint
+        zone_size = max(int(body.rect_w_a / 45), 8)
+        roi_center = dai.Point2f(int(body.xyz_ref_coords_pixel[0] - zone_size/2 + self.crop_w), int(body.xyz_ref_coords_pixel[1] - zone_size/2))
+        roi_size = dai.Size2f(zone_size, zone_size)
+        # Config
+        conf_data = dai.SpatialLocationCalculatorConfigData()
+        conf_data.depthThresholds.lowerThreshold = 100
+        conf_data.depthThresholds.upperThreshold = 10000
+        conf_data.roi = dai.Rect(roi_center, roi_size)
+        cfg = dai.SpatialLocationCalculatorConfig()
+        cfg.setROIs([conf_data])
+        # spatial_rtrip_time = now()
+        self.q_spatial_config.send(cfg)
+
+        # Receives spatial locations
+        spatial_data = self.q_spatial_data.get().getSpatialLocations()
+        # self.glob_spatial_rtrip_time += now() - spatial_rtrip_time
+        # self.nb_spatial_requests += 1
+        sd = spatial_data[0]
+        body.xyz_zone =  [
+            int(sd.config.roi.topLeft().x) - self.crop_w,
+            int(sd.config.roi.topLeft().y),
+            int(sd.config.roi.bottomRight().x) - self.crop_w,
+            int(sd.config.roi.bottomRight().y)
+            ]
+        body.xyz = np.array([
+            sd.spatialCoordinates.x,
+            sd.spatialCoordinates.y,
+            sd.spatialCoordinates.z
+            ])
+        if self.smoothing:
+            body.xyz = self.filter_xyz.apply(body.xyz)
         
     def pd_postprocess(self, inference):
         scores = np.array(inference.getLayerFp16("Identity_1"), dtype=np.float16) # 2254
@@ -301,10 +461,16 @@ class BlazeposeDepthai:
         return body
    
     def lm_postprocess(self, body, inference):
-        body.lm_score = inference.getLayerFp16("output_poseflag")[0]
+        # The output names of the landmarks model are :
+        # Identity_1 (1x1) : score (previously output_poseflag)
+        # Identity_2 (1x128x128x1) (previously output_segmentation)
+        # Identity_3 (1x64x64x39) (previously output_heatmap)
+        # Identity_4 (1x117) world 3D landmarks (previously world_3d)
+        # Identity (1x195) image 3D landmarks (previously ld_3d)
+        body.lm_score = inference.getLayerFp16("Identity_1")[0]
         if body.lm_score > self.lm_score_thresh:  
 
-            lm_raw = np.array(inference.getLayerFp16("ld_3d")).reshape(-1,5)
+            lm_raw = np.array(inference.getLayerFp16("Identity")).reshape(-1,5)
             # Each keypoint have 5 information:
             # - X,Y coordinates are local to the body of
             # interest and range from [0.0, 255.0].
@@ -329,7 +495,8 @@ class BlazeposeDepthai:
             # Normalize x,y,z. Scaling in z = scaling in x = 1/self.lm_input_length
             lm_raw[:,:3] /= self.lm_input_length
             # Apply sigmoid on visibility and presence (if used later)
-            # lm_raw[:,3:5] = 1 / (1 + np.exp(-lm_raw[:,3:5]))
+            body.visibility = 1 / (1 + np.exp(-lm_raw[:,3]))
+            body.presence = 1 / (1 + np.exp(-lm_raw[:,4]))
             
             # body.norm_landmarks contains the normalized ([0:1]) 3D coordinates of landmarks in the square rotated body bounding box
             body.norm_landmarks = lm_raw[:,:3]
@@ -343,8 +510,25 @@ class BlazeposeDepthai:
             # original image. Then we arbitrarily divide by 4 for a more realistic appearance.
             lm_z = body.norm_landmarks[:self.nb_kps+2,2:3] * body.rect_w_a / 4
             lm_xyz = np.hstack((lm_xy, lm_z))
+
+            # World landmarks are predicted in meters rather than in pixels of the image
+            # and have origin in the middle of the hips rather than in the corner of the
+            # pose image (cropped with given rectangle). Thus only rotation (but not scale
+            # and translation) is applied to the landmarks to transform them back to
+            # original  coordinates.
+            body.landmarks_world = np.array(inference.getLayerFp16("Identity_4")).reshape(-1,3)[:self.nb_kps]
+            sin_rot = sin(body.rotation)
+            cos_rot = cos(body.rotation)
+            rot_m = np.array([[cos_rot, sin_rot], [-sin_rot, cos_rot]])
+            body.landmarks_world[:,:2] = np.dot(body.landmarks_world[:,:2], rot_m)
+            
             if self.smoothing:
-                lm_xyz = self.filter.apply(lm_xyz)
+                timestamp = now()
+                object_scale = body.rect_w_a
+                lm_xyz[:self.nb_kps] = self.filter_landmarks.apply(lm_xyz[:self.nb_kps], timestamp, object_scale)
+                lm_xyz[self.nb_kps:] = self.filter_landmarks_aux.apply(lm_xyz[self.nb_kps:], timestamp, object_scale)
+                body.landmarks_world = self.filter_landmarks_world.apply(body.landmarks_world, timestamp)
+
             body.landmarks = lm_xyz.astype(np.int)
 
             # body_from_landmarks will be used to initialize the bounding rotated rectangle in the next frame
@@ -407,7 +591,7 @@ class BlazeposeDepthai:
 
             # Get pose detection
             inference = self.q_pd_out.get()
-            if self.input_type != "rgb": 
+            if self.input_type != "rgb" and (self.force_detection or not self.use_previous_landmarks): 
                 pd_rtrip_time = now() - pd_rtrip_time
                 self.glob_pd_rtrip_time += pd_rtrip_time
             body = self.pd_postprocess(inference)
@@ -436,14 +620,23 @@ class BlazeposeDepthai:
             if body.lm_score < self.lm_score_thresh:
                 body = None
                 self.use_previous_landmarks = False
-                if self.smoothing: self.filter.reset()
+                if self.smoothing: 
+                    self.filter_landmarks.reset()
+                    self.filter_landmarks_aux.reset()
+                    self.filter_landmarks_world.reset()
             else:
                 self.use_previous_landmarks = True
+                if self.xyz:
+                    self.query_body_xyz(body)
             
         else:
             self.use_previous_landmarks = False
-            if self.smoothing: self.filter.reset()
-
+            if self.smoothing: 
+                self.filter_landmarks.reset()
+                self.filter_landmarks_aux.reset()
+                self.filter_landmarks_world.reset()
+                if self.xyz: self.filter_xyz.reset()
+                
         return video_frame, body
 
 
