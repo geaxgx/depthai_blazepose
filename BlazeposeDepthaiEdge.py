@@ -106,8 +106,7 @@ class BlazeposeDepthai:
         
         if input_src == None or input_src == "rgb" or input_src == "rgb_laconic":
             self.input_type = "rgb" # OAK* internal color camera
-            self.laconic = input_src == "rgb_laconic" # Camera frames are not sent to the host
-            
+            self.laconic = input_src == "rgb_laconic" # Camera frames are not sent to the host      
             if xyz:
                 # Check if the device supports stereo
                 cameras = self.device.getConnectedCameras()
@@ -116,8 +115,7 @@ class BlazeposeDepthai:
                 else:
                     print("Warning: depth unavailable on this device, 'xyz' argument is ignored")
 
-            if internal_fps is None:
-                
+            if internal_fps is None:            
                 if "full" in str(self.lm_model):
                     self.internal_fps = 18 if self.xyz else 20
                 elif "heavy" in str(lm_model):
