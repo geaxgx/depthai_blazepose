@@ -4,6 +4,10 @@ from collections import namedtuple
 from math import ceil, sqrt, pi, floor, sin, cos, atan2, gcd
 from collections import  namedtuple
 
+# To not display: RuntimeWarning: overflow encountered in exp
+# in line:  scores = 1 / (1 + np.exp(-scores))
+np.seterr(over='ignore')
+
 # Dictionary that maps from joint names to keypoint indices.
 KEYPOINT_DICT = {
     "nose": 0,

@@ -111,7 +111,7 @@ class BlazeposeRenderer:
             cv2.putText(self.frame, f"Z:{body.xyz[2]/10:3.0f} cm", (x0+10, y0+70), cv2.FONT_HERSHEY_PLAIN, 1, (0,0,255), 2)
         if self.show_xyz_zone and body.xyz_ref:
             # Show zone on which the spatial data were calculated
-            cv2.rectangle(self.frame, body.xyz_zone[0:2], body.xyz_zone[2:4], (180,0,180), 2)
+            cv2.rectangle(self.frame, tuple(body.xyz_zone[0:2]), tuple(body.xyz_zone[2:4]), (180,0,180), 2)
 
     def draw_3d(self, body):
         self.vis3d.clear()
