@@ -48,18 +48,12 @@ The image below demonstrates the 3 modes of 3D visualization:
 
 ## Install
 
-**Currently, the scripting node capabilty is in the *develop* branch.**
 
-Inside a clone of https://github.com/luxonis/depthai-python :
+Install the python packages (depthai, opencv, open3d) with the following command:
+
 ```
-git fetch --all
-git checkout origin/develop
-python3 ./examples/install_requirements.py
+python3 -m pip install -r requirements.txt
 ```
-
-Install other python packages (opencv, open3d) with the following command:
-
-```python3 -m pip install -r requirements.txt```
 
 ## Run
 
