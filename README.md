@@ -6,14 +6,24 @@ The Blazepose landmark models available in this repository are the version "full
 
 The pose detection model comes from mediapipe 0.8.4 and is compatible with the 3 landmark models (the 0.8.6 version currently cannot be converted into a Myriad blob).
 
-
-![Demo](img/taichi.gif)
+<p align="center"> <img src="img/taichi.gif" alst="Demo"></p>
 
 For the challenger Movenet on DepthAI, please visit : [depthai_movenet](https://github.com/geaxgx/depthai_movenet)
 
 For an OpenVINO version of Blazepose, please visit : [openvino_blazepose](https://github.com/geaxgx/openvino_blazepose)
 
 
+- [Blazepose tracking with DepthAI](#blazepose-tracking-with-depthai)
+  - [Architecture: Host mode vs Edge mode](#architecture-host-mode-vs-edge-mode)
+  - [Inferred 3D vs Measured 3D](#inferred-3d-vs-measured-3d)
+  - [Install](#install)
+  - [Run](#run)
+  - [Mediapipe models](#mediapipe-models)
+  - [Custom models](#custom-models)
+  - [Landmarks](#landmarks)
+  - [Code](#code)
+  - [Examples](#examples)
+  - [Credits](#credits)
 
 ## Architecture: Host mode vs Edge mode
 Two modes are available:
@@ -27,8 +37,9 @@ Two modes are available:
 |Heavy|8 (7)|
 <br>
 
-![Host mode](img/pipeline_host_mode.png)
-![Edge mode](img/pipeline_edge_mode.png)
+<p align="center"> <img  src="img/pipeline_host_mode.png" alt="Host mode"></p>
+<p align="center"> <img  src="img/pipeline_edge_mode.png" alt="Edge mode"></p>
+
 
 For depth-capable devices, when measuring the 3D location of a reference point, more nodes are used and not represented here (2 mono cameras, stereo node, spatial location calculator).
 
@@ -44,7 +55,8 @@ The image below demonstrates the 3 modes of 3D visualization:
 2) **World mode** (bottom-left), based on *body.world_landmarks*. Note the mid hips reference point is fixed and the size of the skeleton does not change;
 3) **Mixed mode** (bottom right), mixing *body.world_landmarks* with measured 3D location of the reference point. Like in World mode, the size of the skeleton does not change. But the mid hips reference point is not restricted any more.
 
-![t](img/3d_visualizations.gif)
+<p align="center"> <img  src="img/3d_visualizations.gif" alt="3D visualizations"></p>
+
 
 ## Install
 
@@ -130,7 +142,8 @@ Renderer arguments:
 
     ```python3 demo.py -e -xyz -3 world```
 
-    ![](img/3d_world_visualization.gif)
+    <p align="center"> <img  src="img/3d_world_visualization.gif" alt="World mode"></p>
+
     Note that the floor and wall grids does not correspond to a real floor and wall. Each grid square size is 1m x 1m.
 
 - When using the internal camera, to change its FPS to 15 : 
@@ -208,6 +221,14 @@ The `custom_models` directory contains the code to build the following custom mo
 The method used to build these models is well explained on the [rahulrav's blog](https://rahulrav.com/blog/depthai_camera.html).
 
 
+## Landmarks
+<p align="center">
+  <img src="img/full_body_landmarks.png">
+</p>
+
+<p align="center">
+<a href="https://google.github.io/mediapipe/solutions/pose.html#pose-landmark-model-blazepose-ghum-3d">Source</a>
+</p>
 
 
 ## Code
