@@ -76,7 +76,7 @@ python3 -m pip install -r requirements.txt
 usage: demo.py [-h] [-e] [-i INPUT] [--pd_m PD_M] [--lm_m LM_M] [-xyz] [-c]
                [--no_smoothing] [-f INTERNAL_FPS]
                [--internal_frame_height INTERNAL_FRAME_HEIGHT] [-s] [-t]
-               [--force_detection] [-3 {None,image,anchored,world}]
+               [--force_detection] [-3 {None,image,mixed,world}]
                [-o OUTPUT]
 
 optional arguments:
@@ -107,7 +107,7 @@ Tracker arguments:
                         landmarks from previous frame to determine ROI)
 
 Renderer arguments:
-  -3 {None,image,anchored,world}, --show_3d {None,image,anchored,world}
+  -3 {None,image,mixed,world}, --show_3d {None,image,mixed,world}
                         Display skeleton in 3d in a separate window. See
                         README for description.
   -o OUTPUT, --output OUTPUT
