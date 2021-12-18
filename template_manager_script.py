@@ -40,7 +40,23 @@ filter_x = SmoothingFilter(0.5)
 filter_y = SmoothingFilter(0.5)
 ${_IF_XYZ}
 
-def send_result(buf, type, lm_score=0, rect_center_x=0, rect_center_y=0, rect_size=0, rotation=0, lms=0, lms_world=0, xyz_ref=0, xyz=0, xyz_zone=0):
+# BufferMgr is used to statically allocate buffers once 
+# (replace dynamic allocation). 
+# These buffers are used for sending result to host
+class BufferMgr:
+    def __init__(self):
+        self._bufs = {}
+    def __call__(self, size):
+        try:
+            buf = self._bufs[size]
+        except KeyError:
+            buf = self._bufs[size] = Buffer(size)
+            ${_TRACE} (f"New buffer allocated: {size}")
+        return buf
+
+buffer_mgr = BufferMgr()
+
+def send_result(type, lm_score=0, rect_center_x=0, rect_center_y=0, rect_size=0, rotation=0, lms=0, lms_world=0, xyz_ref=0, xyz=0, xyz_zone=0):
     # type : 0, 1 or 2
     #   0 : pose detection only (detection score < threshold)
     #   1 : pose detection + landmark regression
@@ -50,10 +66,11 @@ def send_result(buf, type, lm_score=0, rect_center_x=0, rect_center_y=0, rect_si
             ("lms", lms), ('lms_world', lms_world),
             ("xyz_ref", xyz_ref), ("xyz", xyz), ("xyz_zone", xyz_zone)])
     result_serial = marshal.dumps(result, 2)
+    buffer = buffer_mgr(len(result_serial))  
+    buffer.getData()[:] = result_serial
     ${_TRACE} ("len result:"+str(len(result_serial)))
-    
-    buf.getData()[:] = result_serial  
-    node.io['host'].send(buf)
+     
+    node.io['host'].send(buffer)
     ${_TRACE} ("Manager sent result to host")
 
 
@@ -80,11 +97,6 @@ def is_in_image(sqn_x, sqn_y):
 # 2 = landmark branch
 send_new_frame_to_branch = 1
 
-# Predefined buffer variables used for sending result to host
-buf1 = Buffer(197)
-buf2 = Buffer(${_buffer_size})
-buf3 = Buffer(201)
-
 next_roi_lm_idx = 33*5
 
 cfg_pre_pd = ImageManipConfig()
@@ -99,7 +111,7 @@ while True:
         ${_TRACE} ("Manager received pd result: "+str(detection))
         pd_score, sqn_rr_center_x, sqn_rr_center_y, sqn_scale_x, sqn_scale_y = detection
         if pd_score < ${_pd_score_thresh}:
-            send_result(buf1, 0)
+            send_result(0)
             continue
         scale_center_x = sqn_scale_x - sqn_rr_center_x
         scale_center_y = sqn_scale_y - sqn_rr_center_y
@@ -188,7 +200,7 @@ while True:
         ${_IF_XYZ}
 
         # Send result to host
-        send_result(buf2, send_new_frame_to_branch, lm_score, sqn_rr_center_x, sqn_rr_center_y, sqn_rr_size, rotation, lms, lms_world, xyz_ref, xyz, xyz_zone)
+        send_result(send_new_frame_to_branch, lm_score, sqn_rr_center_x, sqn_rr_center_y, sqn_rr_size, rotation, lms, lms_world, xyz_ref, xyz, xyz_zone)
         
         if not ${_force_detection}:
             send_new_frame_to_branch = 2 
@@ -206,5 +218,5 @@ while True:
             rotation = rotation - 2 * pi *floor((rotation + pi) / (2 * pi))    
 
     else:
-        send_result(buf3, send_new_frame_to_branch, lm_score)
+        send_result(send_new_frame_to_branch, lm_score)
         send_new_frame_to_branch = 1

@@ -125,7 +125,7 @@ class BlazeposeRenderer:
                     """
                     Beware, the y value of landmarks_world coordinates is negative for landmarks 
                     above the mid hips (like shoulders) and negative for landmarks below (like feet).
-                    The the y value of (x,y,z) coordinates given by depth sensor is negative in the lower part
+                    The y value of (x,y,z) coordinates given by depth sensor is negative in the lower part
                     of the image and positive in the upper part.
                     """
                     translation = body.xyz / 1000

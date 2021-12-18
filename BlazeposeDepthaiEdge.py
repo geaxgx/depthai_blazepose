@@ -234,8 +234,11 @@ class BlazeposeDepthai:
         if self.xyz:
             print("Creating MonoCameras, Stereo and SpatialLocationCalculator nodes...")
             # For now, RGB needs fixed focus to properly align with depth.
-            # This value was used during calibration
-            cam.initialControl.setManualFocus(130)
+            # The value used during calibration should be used here
+            calib_data = self.device.readCalibration()
+            calib_lens_pos = calib_data.getLensPosition(dai.CameraBoardSocket.RGB)
+            print(f"RGB calibration lens position: {calib_lens_pos}")
+            cam.initialControl.setManualFocus(calib_lens_pos)
 
             mono_resolution = dai.MonoCameraProperties.SensorResolution.THE_400_P
             left = pipeline.createMonoCamera()
