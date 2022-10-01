@@ -164,7 +164,6 @@ while True:
             if is_in_image(sqn_xyz_ref_x, sqn_xyz_ref_y):
                 xyz_ref = 1
         if xyz_ref == 0 and is_visible(right_shoulder) and is_visible(left_shoulder):
-            xyz_ref = 2
             kp1 = right_shoulder
             kp2 = left_shoulder
             rrn_xyz_ref_x = (lms[5*kp1] + lms[5*kp2]) / 512 # 512 = 256*2 (256 to normalizing, 2 for the mean)
