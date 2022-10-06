@@ -418,14 +418,21 @@ class BlazeposeDepthai:
             return
         # Prepare the request to SpatialLocationCalculator
         # ROI : small rectangular zone around the reference keypoint
-        zone_size = max(int(body.rect_w_a / 45), 8)
-        roi_center = dai.Point2f(int(body.xyz_ref_coords_pixel[0] - zone_size/2 + self.crop_w), int(body.xyz_ref_coords_pixel[1] - zone_size/2))
-        roi_size = dai.Size2f(zone_size, zone_size)
+        half_zone_size = int(max(body.rect_w_a / 90, 4))
+        xc = int(body.xyz_ref_coords_pixel[0] + self.crop_w)
+        yc = int(body.xyz_ref_coords_pixel[1])
+        roi_left = max(0, xc - half_zone_size)
+        roi_right = min(self.img_w-1, xc + half_zone_size)
+        roi_top = max(0, yc - half_zone_size)
+        roi_bottom = min(self.img_h-1, yc + half_zone_size)
+        roi_topleft = dai.Point2f(roi_left, roi_top)
+        roi_bottomright = dai.Point2f(roi_right, roi_bottom)
         # Config
         conf_data = dai.SpatialLocationCalculatorConfigData()
         conf_data.depthThresholds.lowerThreshold = 100
         conf_data.depthThresholds.upperThreshold = 10000
-        conf_data.roi = dai.Rect(roi_center, roi_size)
+        # conf_data.roi = dai.Rect(roi_center, roi_size)
+        conf_data.roi = dai.Rect(roi_topleft, roi_bottomright)
         cfg = dai.SpatialLocationCalculatorConfig()
         cfg.setROIs([conf_data])
         # spatial_rtrip_time = now()

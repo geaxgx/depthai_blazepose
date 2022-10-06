@@ -365,6 +365,7 @@ class BlazeposeDepthai:
                     _force_detection = self.force_detection,
                     _pad_h = self.pad_h,
                     _img_h = self.img_h,
+                    _img_w = self.img_w,
                     _frame_size = self.frame_size,
                     _crop_w = self.crop_w,
                     _rect_transf_scale = self.rect_transf_scale,
