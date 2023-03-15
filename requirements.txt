@@ -1,4 +1,4 @@
-numpy<1.24.0
+numpy < 1.24.0
 opencv-python >= 4.5.1.48
 open3d
 depthai >= 2.10
