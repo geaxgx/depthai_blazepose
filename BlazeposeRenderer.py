@@ -102,7 +102,7 @@ class BlazeposeRenderer:
                         cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
 
         if self.show_xyz and body.xyz_ref:
-            x0, y0 = body.xyz_ref_coords_pixel.astype(np.int)
+            x0, y0 = body.xyz_ref_coords_pixel.astype(np.int32)
             x0 -= 50
             y0 += 40
             cv2.rectangle(self.frame, (x0,y0), (x0+100, y0+85), (220,220,240), -1)
