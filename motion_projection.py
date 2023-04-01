@@ -3,6 +3,7 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
+from collections import deque
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -32,7 +33,7 @@ parser_tracker.add_argument('--force_detection', action="store_true",
                     help="Force person detection on every frame (never use landmarks from previous frame to determine ROI)")
 
 parser_renderer = parser.add_argument_group("Renderer arguments")
-parser_renderer.add_argument('-3', '--show_3d', choices=[None, "image", "world", "mixed"], default="world",
+parser_renderer.add_argument('-3', '--show_3d', choices=[None, "image", "world", "mixed"], default=None,
                     help="Display skeleton in 3d in a separate window. See README for description.")
 parser_renderer.add_argument("-o","--output",
                     help="Path to output video file")
@@ -44,6 +45,7 @@ if args.edge:
     from BlazeposeDepthaiEdge import BlazeposeDepthai
 else:
     from BlazeposeDepthai import BlazeposeDepthai
+
 tracker = BlazeposeDepthai(input_src=args.input, 
             pd_model=args.pd_m,
             lm_model=args.lm_m,
@@ -58,58 +60,121 @@ tracker = BlazeposeDepthai(input_src=args.input,
 
 renderer = BlazeposeRenderer(
                 tracker, 
-                show_3d=args.show_3d, 
+                # show_3d=args.show_3d, 
+                show_3d="drone", 
                 output=args.output)
 
-ref_frame = None
-is_start = False
-ref_hand_vec = None
-VERTICAL_THRESHOLD_UP    = 1.0  ## radians 
-VERTICAL_THRESHOLD_DOWN  = -1.0  ## radians 
 
-def dot_prd(A, B):
-    return np.dot(A, B)/(np.linalg.norm(A)*np.linalg.norm(B))
+def calc_pose_vector(body):
+    '''
+        trajectory = []
 
+        while True:
+            get frame, body
+            
+            calculate pose of:
+                Righ wrist
+                Left wrist
+                Right ankle
+                Left ankle
+                left eye
+                right eye
+                left torso
+                right torso
+                centroid
+            in current frame
+            
+            
+            if previous frame is None:
+                previous frame
+                initialize queue points
+                continue
+            store in queue
+
+            traverse queue:
+                calculate distance for each element in the pose_vector
+            
+            previous frame = current frame
+            queue pop
+    '''
+
+    # Righ wrist
+    right_wrist = body.landmarks_world[16]
+    # Left wrist
+    left_wrist = body.landmarks_world[15]
+    # Right ankle
+    right_ankle = body.landmarks_world[28]
+    # Left ankle
+    left_ankle = body.landmarks_world[27]
+    # right eye
+    right_eye = body.landmarks_world[5]
+    # left eye
+    left_eye = body.landmarks_world[2]
+    # right hip
+    right_hip = body.landmarks_world[24]
+    # left hip
+    left_hip = body.landmarks_world[23]
+    #centroid (just considering hip joints for this)
+    centroid = (left_hip + right_hip) /2
+    
+    return np.array([
+        right_wrist,
+        left_wrist,
+        right_ankle,
+        left_ankle,
+        right_eye,
+        left_eye,
+        right_hip,
+        left_hip,
+        centroid
+    ])
+
+def distance(pose1, pose2):
+    return pose2-pose1
+
+def project_motion_to_drone(pose):
+    #calc weight
+    distance = np.linalg.norm(pose, axis=1)
+    weight = distance/np.sum(distance)
+    # print('weight: '+ str(weight))
+    # print('pose: '+ str(pose))
+    
+    major_pose_change_idx = np.argmax(weight)
+    ##TODO send signal to drone
+    ## send pose pos (of major_pose_change_idx) projected in drone frame
+    
+    renderer.project_to_drone(pose[major_pose_change_idx]/2)
+
+NUM_LANDMARKS = 9
+trajectory = np.zeros((NUM_LANDMARKS,3))
+previous_frame = None
+
+
+i=0
 while True:
     # Run blazepose on next frame
     frame, body = tracker.next_frame()
     if frame is None: break
+    if body is None: continue
 
     # Draw 2d skeleton
     frame = renderer.draw(frame, body)
-    key = renderer.waitKey(delay=1)
-    
-    # Get direction: Up/Down
-    if body is not None:
-        right_shoulder = body.landmarks[12]
-        right_wrist = body.landmarks[16]
-        if (key==ord('r') or (key==ord('s') and is_start is False)):    
-            ref_frame = frame
-            is_start = True
-            ref_right_wrist, ref_right_shoulder = right_wrist, right_shoulder
-            ref_hand_vec = ref_right_wrist - ref_right_shoulder
-            
-        if is_start and ref_hand_vec is not None:
-            hand_vec = right_wrist - right_shoulder
-            if hand_vec is not None:
-                sign = 1 if (right_wrist - ref_right_wrist)[1] < 0 else -1
-                angle = sign * np.arccos(dot_prd(hand_vec, ref_hand_vec))
-            else:
-                print('Right arm not visible completely. Please Align.')
+    # key = renderer.waitKey(delay=1)
 
-            # if angle>VERTICAL_THRESHOLD_UP:
-            #     print('UP! UP! Away!')
-            # if angle<VERTICAL_THRESHOLD_DOWN:
-            #     print('Shawty get low, low, low!')
-            print(angle)
+    current_pose = calc_pose_vector(body)
+    # print(current_pose)
+    if previous_frame is not None:
+        del_t_distance = distance(previous_pose, current_pose)
+        #update trajectory
+        trajectory+=del_t_distance
 
-    ## stop
-    if key==ord('p') and is_start is True:
-        ref_frame = None
-        is_start = False
-        ref_hand_vec = None
+
+    if i%5 and i!=0:
+        project_motion_to_drone(trajectory)
     
-    if key == 27 or key == ord('q'):
-        break
-renderer.exit()
-tracker.exit()
+        #reset trajectory
+        trajectory = np.zeros((NUM_LANDMARKS,3))
+
+    previous_frame = frame
+    previous_pose = current_pose
+    i+=1

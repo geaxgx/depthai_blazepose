@@ -6,7 +6,7 @@ import mediapipe_utils as mpu
 
 
 # LINE_BODY and COLORS_BODY are used when drawing the skeleton in 3D. 
-rgb = {"right":(0,1,0), "left":(1,0,0), "middle":(1,1,0)}
+rgb = {"right":(0,1,0), "left":(1,0,0), "middle":(1,1,0), "random":(0,0,1)}
 LINES_BODY = [[9,10],[4,6],[1,3],
             [12,14],[14,16],[16,20],[20,18],[18,16],
             [12,11],[11,23],[23,24],[24,12],
@@ -19,7 +19,12 @@ COLORS_BODY = ["middle","right","left",
                 "middle","middle","middle","middle",
                 "left","left","left","left","left",
                 "right","right","right","left","left","left"]
+
 COLORS_BODY = [rgb[x] for x in COLORS_BODY]
+
+COLORS_DRONES = ["middle","right","left","random"]
+
+COLORS_DRONES = [rgb[x] for x in COLORS_DRONES]
 
 
 
@@ -39,6 +44,7 @@ class BlazeposeRenderer:
         self.show_landmarks = True
         self.show_score = False
         self.show_fps = True
+        self.drone_position = []
 
         self.show_xyz_zone = self.show_xyz = self.tracker.xyz
 
@@ -57,6 +63,12 @@ class BlazeposeRenderer:
             self.vis3d.create_grid([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1],2,2) # Floor
             self.vis3d.create_grid([-1,1,1],[1,1,1],[1,-1,1],[-1,-1,1],2,2) # Wall
             self.vis3d.init_view()
+        if self.show_3d == "drone":
+            self.vis3d = Visu3D(bg_color=(0.2, 0.2, 0.2), zoom=1.1, segment_radius=0.01)
+            self.vis3d.create_grid([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1],2,2) # Floor
+            self.vis3d.create_grid([-1,1,1],[1,1,1],[1,-1,1],[-1,-1,1],2,2) # Wall
+            self.vis3d.init_view()
+            self.spawn_drones(None)
         elif self.show_3d == "mixed":
             self.vis3d = Visu3D(bg_color=(0.4, 0.4, 0.4), zoom=0.7, segment_radius=0.01)
             half_length = 3
@@ -102,7 +114,7 @@ class BlazeposeRenderer:
                         cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
 
         if self.show_xyz and body.xyz_ref:
-            x0, y0 = body.xyz_ref_coords_pixel.astype(np.int)
+            x0, y0 = body.xyz_ref_coords_pixel.astype(np.int32)
             x0 -= 50
             y0 += 40
             cv2.rectangle(self.frame, (x0,y0), (x0+100, y0+85), (220,220,240), -1)
@@ -114,6 +126,7 @@ class BlazeposeRenderer:
             cv2.rectangle(self.frame, tuple(body.xyz_zone[0:2]), tuple(body.xyz_zone[2:4]), (180,0,180), 2)
 
     def draw_3d(self, body):
+        # if self.show_3d!="drone":
         self.vis3d.clear()
         self.vis3d.try_move()
         self.vis3d.add_geometries()
@@ -148,7 +161,32 @@ class BlazeposeRenderer:
                     if self.is_present(body, a) and self.is_present(body, b):
                             self.vis3d.add_segment(points[a], points[b], color=colors[i])
         self.vis3d.render()
-                
+    
+    def spawn_drones(self, position, num_drones=len(COLORS_DRONES)):
+        if len(self.drone_position)==0:
+            self.drone_position = np.hstack([np.random.uniform(low=-1, high=1, size=(4,2)), np.ones((4,1))*0.8])
+            print(self.drone_position.shape)
+        else:
+            self.drone_position += position
+
+    def move_drones(self, position):
+        colors = COLORS_DRONES
+        radius = 0.1
+        self.spawn_drones(position)
+        for i, pos in enumerate(self.drone_position):
+            self.vis3d.add_drone(pos, radius, color=colors[i])
+
+
+    def project_to_drone(self, projection):
+        # self.vis3d.clear()
+        self.vis3d.add_geometries()
+    
+
+        if projection is not None:
+            #normalize points to grid size            
+             self.move_drones(projection)
+                    
+        self.vis3d.render()        
         
     def draw(self, frame, body):
         if not self.pause:

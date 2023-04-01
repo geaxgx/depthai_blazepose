@@ -43,6 +43,17 @@ def create_cylinder(height=1, radius=None, resolution=20):
         resolution=resolution)
     return(mesh_frame)
 
+
+def create_sphere(radius=1.0, color=[1,1,1]):
+    """
+    Create an sphere in Open3D
+    """
+    mesh = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    mesh.compute_vertex_normals()
+    mesh.paint_uniform_color(color)
+    return mesh
+    
+
 def create_segment(a, b, radius=0.05, color=(1,1,0), resolution=20):
     """
     Creates an line(cylinder) from an pointa to point b,
@@ -171,6 +182,11 @@ class Visu3D:
         cam.paint_uniform_color([0.2,0.7,1])
         cam.compute_vertex_normals()
         self.geometries.append(cam)
+
+    def add_drone(self, position, radius=1, color=[1,1,1]):
+        drone = create_sphere(radius, color)
+        drone.translate(position)
+        self.vis.add_geometry(drone)
 
     def add_geometries(self):
         for geo in self.geometries:
