@@ -64,11 +64,13 @@ class BlazeposeRenderer:
             self.vis3d.create_grid([-1,1,1],[1,1,1],[1,-1,1],[-1,-1,1],2,2) # Wall
             self.vis3d.init_view()
         if self.show_3d == "drone":
-            self.vis3d = Visu3D(bg_color=(0.2, 0.2, 0.2), zoom=1.1, segment_radius=0.01)
-            self.vis3d.create_grid([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1],2,2) # Floor
-            self.vis3d.create_grid([-1,1,1],[1,1,1],[1,-1,1],[-1,-1,1],2,2) # Wall
+            self.vis3d = Visu3D(bg_color=(0.4, 0.4, 0.4), zoom=0.7, segment_radius=0.01)
+            half_length = 3
+            grid_depth = 5
+            self.vis3d.create_grid([-half_length,1,0],[half_length,1,0],[half_length,1,grid_depth],[-half_length,1,grid_depth],2*half_length,grid_depth) # Floor
+            self.vis3d.create_grid([-half_length,1,grid_depth],[half_length,1,grid_depth],[half_length,-1,grid_depth],[-half_length,-1,grid_depth],2*half_length,2) # Wall
+            self.vis3d.create_camera()
             self.vis3d.init_view()
-            self.spawn_drones(None)
         elif self.show_3d == "mixed":
             self.vis3d = Visu3D(bg_color=(0.4, 0.4, 0.4), zoom=0.7, segment_radius=0.01)
             half_length = 3
@@ -133,7 +135,7 @@ class BlazeposeRenderer:
         if body is not None:
             points = body.landmarks if self.show_3d == "image" else body.landmarks_world
             draw_skeleton = True
-            if self.show_3d == "mixed":  
+            if self.show_3d == "mixed" or self.show_3d == "drone":  
                 if body.xyz_ref:
                     """
                     Beware, the y value of landmarks_world coordinates is negative for landmarks 

@@ -84,7 +84,7 @@ class BlazeposeDepthai:
         self.pd_score_thresh = pd_score_thresh
         self.lm_score_thresh = lm_score_thresh
         self.smoothing = smoothing
-        self.crop = crop 
+        self.crop = crop
         self.internal_fps = internal_fps     
         self.stats = stats
         self.force_detection = force_detection
@@ -539,7 +539,7 @@ class BlazeposeDepthai:
                 lm_xyz[self.nb_kps:] = self.filter_landmarks_aux.apply(lm_xyz[self.nb_kps:], timestamp, object_scale)
                 body.landmarks_world = self.filter_landmarks_world.apply(body.landmarks_world, timestamp)
 
-            body.landmarks = lm_xyz.astype(np.int)
+            body.landmarks = lm_xyz.astype(np.int32)
 
             # body_from_landmarks will be used to initialize the bounding rotated rectangle in the next frame
             # The only information we need are the 2 landmarks 33 and 34

@@ -50,7 +50,7 @@ tracker = BlazeposeDepthai(input_src=args.input,
             pd_model=args.pd_m,
             lm_model=args.lm_m,
             smoothing=not args.no_smoothing,   
-            xyz=args.xyz,            
+            xyz=True, #args.xyz,            
             crop=args.crop,
             internal_fps=args.internal_fps,
             internal_frame_height=args.internal_frame_height,
@@ -97,8 +97,8 @@ def calc_pose_vector(body):
             previous frame = current frame
             queue pop
     '''
-
-    # Righ wrist
+    # if body.xyz_ref:
+        # Righ wrist
     right_wrist = body.landmarks_world[16]
     # Left wrist
     left_wrist = body.landmarks_world[15]
@@ -117,20 +117,45 @@ def calc_pose_vector(body):
     #centroid (just considering hip joints for this)
     centroid = (left_hip + right_hip) /2
     
-    return np.array([
-        right_wrist,
-        left_wrist,
-        right_ankle,
-        left_ankle,
-        right_eye,
-        left_eye,
-        right_hip,
-        left_hip,
+    translation = body.xyz / 1000
+    translation[1] = -translation[1]
+    
+    # if body.xyz_ref == "mid_shoulders":
+    #     mid_hips_to_mid_shoulders = body.landmarks_world[11] + body.landmarks_world[12] /2 
+    #     translation -= mid_hips_to_mid_shoulders   
+
+    pose_vec = np.array([
+        right_wrist, left_wrist,
+        right_ankle, left_ankle,
+        right_eye, left_eye,
+        right_hip, left_hip,
         centroid
     ])
 
+    pose_vec = pose_vec + translation
+    
+    # else:
+    #     pose_vec = np.zeros((NUM_LANDMARKS, 3))
+
+    # pose_vec += body.xyz
+    return pose_vec
+
 def distance(pose1, pose2):
     return pose2-pose1
+
+def randomize_init_drone_pos(body_landmarks):
+    '''
+    take pose of human eye centers
+    add a constant value
+    add a random noise to it
+    '''
+    human_head_center = body_landmarks[5]+body_landmarks[6]/2
+    const_distance = np.array([[5, 5, -5],
+                               [5, 5, -5],
+                               [7, 4, -5],
+                               [7, 4, -5]])
+    noise = np.random.rand(4,3)*2
+    return human_head_center + const_distance + noise
 
 def project_motion_to_drone(pose):
     #calc weight
@@ -167,7 +192,10 @@ while True:
         del_t_distance = distance(previous_pose, current_pose)
         #update trajectory
         trajectory+=del_t_distance
-
+    else:
+        drone_pos = randomize_init_drone_pos(current_pose)
+        renderer.spawn_drones(drone_pos)
+    
 
     if i%5 and i!=0:
         project_motion_to_drone(trajectory)
