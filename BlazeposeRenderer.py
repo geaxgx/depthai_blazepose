@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from o3d_utils import Visu3D
 import mediapipe_utils as mpu
-
+import render
 
 
 # LINE_BODY and COLORS_BODY are used when drawing the skeleton in 3D. 
@@ -89,7 +89,7 @@ class BlazeposeRenderer:
     def is_present(self, body, lm_id):
         return body.presence[lm_id] > self.tracker.presence_threshold
 
-    def draw_landmarks(self, body):
+    def draw_landmarks(self, body, angle=None):
         if self.show_rot_rect:
             cv2.polylines(self.frame, [np.array(body.rect_points)], True, (0,255,255), 2, cv2.LINE_AA)
         if self.show_landmarks:                
@@ -111,9 +111,10 @@ class BlazeposeRenderer:
                     cv2.circle(self.frame, (x_y[0], x_y[1]), 4, color, -11)
         if self.show_score:
             h, w = self.frame.shape[:2]
-            cv2.putText(self.frame, f"Landmark score: {body.lm_score:.2f}", 
-                        (20, h-60), 
-                        cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
+            if angle is not None:
+                cv2.putText(self.frame, f"Landmark score: {body.lm_score:.2f} \n Angle: {angle:.2f}", 
+                            (20, h-60), 
+                            cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
 
         if self.show_xyz and body.xyz_ref:
             x0, y0 = body.xyz_ref_coords_pixel.astype(np.int32)
@@ -171,30 +172,35 @@ class BlazeposeRenderer:
         else:
             self.drone_position += position
 
-    def move_drones(self, position):
+    def move_drones(self, position, list_of_points):
         colors = COLORS_DRONES
         radius = 0.1
         self.spawn_drones(position)
-        for i, pos in enumerate(self.drone_position):
-            self.vis3d.add_drone(pos, radius, color=colors[i])
+        list_of_points.append(self.drone_position)
+        
+        
+        #TODO show in matplotlib
+        # render.draw_drones(list_of_points)
+        # for i, pos in enumerate(self.drone_position):
+        #     self.vis3d.add_drone(pos, radius, color=colors[i])
 
 
-    def project_to_drone(self, projection):
+    def project_to_drone(self, projection, points):
         # self.vis3d.clear()
         self.vis3d.add_geometries()
     
 
         if projection is not None:
             #normalize points to grid size            
-             self.move_drones(projection)
+             self.move_drones(projection, points)
                     
         self.vis3d.render()        
         
-    def draw(self, frame, body):
+    def draw(self, frame, body, angle=None):
         if not self.pause:
             self.frame = frame
             if body:
-                self.draw_landmarks(body)
+                self.draw_landmarks(body, angle=angle)
             self.body = body
         elif self.frame is None:
             self.frame = frame

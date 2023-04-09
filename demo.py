@@ -3,6 +3,7 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
+from djitellopy import Tello
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -58,7 +59,7 @@ tracker = BlazeposeDepthai(input_src=args.input,
 
 renderer = BlazeposeRenderer(
                 tracker, 
-                show_3d=args.show_3d, 
+                show_3d=False, 
                 output=args.output)
 
 ref_frame = None
@@ -66,6 +67,15 @@ is_start = False
 ref_hand_vec = None
 VERTICAL_THRESHOLD_UP    = 1.0  ## radians 
 VERTICAL_THRESHOLD_DOWN  = -1.0  ## radians 
+
+
+tello = Tello()
+tello.connect()
+
+tello.streamon()
+# frame_read = tello.get_frame_read()
+
+tello.takeoff()
 
 def dot_prd(A, B):
     return np.dot(A, B)/(np.linalg.norm(A)*np.linalg.norm(B))
@@ -76,8 +86,12 @@ while True:
     if frame is None: break
 
     # Draw 2d skeleton
-    frame = renderer.draw(frame, body)
-    key = renderer.waitKey(delay=1)
+    if is_start:
+        frame = renderer.draw(frame, body, angle)
+        key = renderer.waitKey(delay=1)
+    else:
+        frame = renderer.draw(frame, body)
+        key = renderer.waitKey(delay=1)
     
     # Get direction: Up/Down
     if body is not None:
@@ -97,10 +111,13 @@ while True:
             else:
                 print('Right arm not visible completely. Please Align.')
 
-            # if angle>VERTICAL_THRESHOLD_UP:
-            #     print('UP! UP! Away!')
-            # if angle<VERTICAL_THRESHOLD_DOWN:
-            #     print('Shawty get low, low, low!')
+            if angle>VERTICAL_THRESHOLD_UP:
+                print('UP! UP! Away!')
+                tello.move_up(30)
+            if angle<VERTICAL_THRESHOLD_DOWN:
+                print('Shawty get low, low, low!')
+                tello.move_down(30)
+
             print(angle)
 
     ## stop
@@ -113,3 +130,5 @@ while True:
         break
 renderer.exit()
 tracker.exit()
+
+tello.land()

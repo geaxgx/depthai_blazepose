@@ -3,7 +3,9 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 from collections import deque
+import render 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -157,7 +159,7 @@ def randomize_init_drone_pos(body_landmarks):
     noise = np.random.rand(4,3)*2
     return human_head_center + const_distance + noise
 
-def project_motion_to_drone(pose):
+def project_motion_to_drone(pose, list_of_points):
     #calc weight
     distance = np.linalg.norm(pose, axis=1)
     weight = distance/np.sum(distance)
@@ -168,14 +170,16 @@ def project_motion_to_drone(pose):
     ##TODO send signal to drone
     ## send pose pos (of major_pose_change_idx) projected in drone frame
     
-    renderer.project_to_drone(pose[major_pose_change_idx]/2)
+    renderer.project_to_drone(pose[major_pose_change_idx], list_of_points)
+
 
 NUM_LANDMARKS = 9
 trajectory = np.zeros((NUM_LANDMARKS,3))
 previous_frame = None
 
-
+list_of_points = []
 i=0
+count = 0
 while True:
     # Run blazepose on next frame
     frame, body = tracker.next_frame()
@@ -186,23 +190,29 @@ while True:
     frame = renderer.draw(frame, body)
     # key = renderer.waitKey(delay=1)
 
-    current_pose = calc_pose_vector(body)
-    # print(current_pose)
-    if previous_frame is not None:
-        del_t_distance = distance(previous_pose, current_pose)
-        #update trajectory
-        trajectory+=del_t_distance
-    else:
-        drone_pos = randomize_init_drone_pos(current_pose)
-        renderer.spawn_drones(drone_pos)
+    # current_pose = calc_pose_vector(body)
+    # # print(current_pose)
+    # if previous_frame is not None:
+    #     del_t_distance = distance(previous_pose, current_pose)
+    #     #update trajectory
+    #     trajectory+=del_t_distance
+    # else:
+    #     drone_pos = randomize_init_drone_pos(current_pose)
+    #     renderer.spawn_drones(drone_pos)
     
 
-    if i%5 and i!=0:
-        project_motion_to_drone(trajectory)
+    # if i%5 and i!=0:
+        # project_motion_to_drone(trajectory, list_of_points)
     
         #reset trajectory
-        trajectory = np.zeros((NUM_LANDMARKS,3))
+        # trajectory = np.zeros((NUM_LANDMARKS,3))
 
-    previous_frame = frame
-    previous_pose = current_pose
-    i+=1
+    # previous_frame = frame
+    # previous_pose = current_pose
+    # i+=1
+    # if (i == 10): 
+    #     # render.draw_drones(list_of_points)
+    #     break
+
+# print(list_of_points)
+
