@@ -170,7 +170,8 @@ def project_motion_to_drone(pose, list_of_points):
     ##TODO send signal to drone
     ## send pose pos (of major_pose_change_idx) projected in drone frame
     
-    renderer.project_to_drone(pose[major_pose_change_idx], list_of_points)
+    points = renderer.project_to_drone(pose[major_pose_change_idx], list_of_points)
+    return points
 
 
 NUM_LANDMARKS = 9
@@ -190,29 +191,30 @@ while True:
     frame = renderer.draw(frame, body)
     # key = renderer.waitKey(delay=1)
 
-    # current_pose = calc_pose_vector(body)
-    # # print(current_pose)
-    # if previous_frame is not None:
-    #     del_t_distance = distance(previous_pose, current_pose)
-    #     #update trajectory
-    #     trajectory+=del_t_distance
-    # else:
-    #     drone_pos = randomize_init_drone_pos(current_pose)
-    #     renderer.spawn_drones(drone_pos)
+    current_pose = calc_pose_vector(body)
+    # print(current_pose)
+    if previous_frame is not None:
+        del_t_distance = distance(previous_pose, current_pose)
+        #update trajectory
+        trajectory+=del_t_distance
+    else:
+        drone_pos = randomize_init_drone_pos(current_pose)
+        renderer.spawn_drones(drone_pos)
     
 
-    # if i%5 and i!=0:
-        # project_motion_to_drone(trajectory, list_of_points)
+    if i%5 and i!=0:
+        list_of_points = project_motion_to_drone(trajectory, list_of_points)
     
-        #reset trajectory
-        # trajectory = np.zeros((NUM_LANDMARKS,3))
+        # reset trajectory
+        trajectory = np.zeros((NUM_LANDMARKS,3))
 
-    # previous_frame = frame
-    # previous_pose = current_pose
-    # i+=1
-    # if (i == 10): 
-    #     # render.draw_drones(list_of_points)
-    #     break
+    previous_frame = frame
+    previous_pose = current_pose
+    i+=1
+    if (i == 10): 
+        render.draw_drones(list_of_points)
+        break
 
-# print(list_of_points)
+print(list_of_points)
 
+np.save('points.npy', list_of_points)

@@ -167,7 +167,7 @@ class BlazeposeRenderer:
     
     def spawn_drones(self, position, num_drones=len(COLORS_DRONES)):
         if len(self.drone_position)==0:
-            self.drone_position = np.hstack([np.random.uniform(low=-1, high=1, size=(4,2)), np.ones((4,1))*0.8])
+            self.drone_position = np.hstack([np.random.uniform(low=-1, high=1, size=(4,2)), np.ones((num_drones,1))*0.8])
             print(self.drone_position.shape)
         else:
             self.drone_position += position
@@ -177,7 +177,7 @@ class BlazeposeRenderer:
         radius = 0.1
         self.spawn_drones(position)
         list_of_points.append(self.drone_position)
-        
+        return list_of_points
         
         #TODO show in matplotlib
         # render.draw_drones(list_of_points)
@@ -192,9 +192,10 @@ class BlazeposeRenderer:
 
         if projection is not None:
             #normalize points to grid size            
-             self.move_drones(projection, points)
-                    
-        self.vis3d.render()        
+            list_of_points = self.move_drones(projection, points)
+
+        # self.vis3d.render()        
+        return list_of_points
         
     def draw(self, frame, body, angle=None):
         if not self.pause:
