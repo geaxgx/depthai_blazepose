@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 import socket
+import threading
 from djitellopy import tello
 from time import sleep
 
 def get_command(command, val=None):
-    
     command_dict = {
         'LEFT-RIGHT': f"rc {val} 0 0 0",
         # 'RIGHT': "rc 0 1 0 0",
@@ -19,13 +19,15 @@ def get_command(command, val=None):
         'COUNTER-CLOCKWISE': f"ccw {val}",
         'BATTERY': "battery?",
         'POS-LEFT': f"rc {val} 0 0 0",
-        
+        'GO': "go "+' '.join(map(str, val)) if type(val)==list else "",
     }
+
     if command in command_dict.keys():
         return command_dict[command]
+    
     return command
 
-def Send_Message(message):
+def send_socket_message(message):
     host='169.254.222.143' #client ip
     port = 4000
     
@@ -40,6 +42,15 @@ def Send_Message(message):
     print("Received from server: " + data)
     s.close()
     return data
+
+def relay_command_to_drone(command, drone=None, is_remote=False):
+    if is_remote:
+        print("Sending Message: ", command)
+        response = send_socket_message(command)
+    else:
+        if drone:
+            drone.send_control_command(command)
+
 
 def Main():
     print("Client Started")
@@ -57,16 +68,18 @@ def Main():
     drone.takeoff()
     # tello.send_keepalive()
 
-    message = get_command("LEFT-RIGHT", 25)
+    message = get_command("GO", [50,50,0,25])
 
-    print("Sending Message: ", message)
-    response = Send_Message(message)
-    
-    sleep(2)
-    
-    drone.move_right(100)
-    
+    thread1 = threading.Thread(target=relay_command_to_drone, args=[message], kwargs={'drone':None, 'is_remote':True})
+    thread2 = threading.Thread(target=relay_command_to_drone, args=[message], kwargs={'drone':drone, 'is_remote':False})
 
+    thread1.start()
+    thread2.start()
+
+    thread1.join()
+    thread2.join()
+    
+    
     drone.land()
 
 
