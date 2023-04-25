@@ -4,6 +4,7 @@ from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
 from djitellopy import Tello
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -65,12 +66,15 @@ renderer = BlazeposeRenderer(
 ref_frame = None
 is_start = False
 ref_hand_vec = None
-VERTICAL_THRESHOLD_UP    = 1.0  ## radians 
-VERTICAL_THRESHOLD_DOWN  = -1.0  ## radians 
+VERTICAL_THRESHOLD_UP    = 0.5  ## radians 
+VERTICAL_THRESHOLD_DOWN  = -0.5  ## radians 
 
 
 tello = Tello()
+
 tello.connect()
+
+tello.send_keepalive()
 
 tello.streamon()
 # frame_read = tello.get_frame_read()
@@ -85,14 +89,18 @@ while True:
     frame, body = tracker.next_frame()
     if frame is None: break
 
+
     # Draw 2d skeleton
     if is_start:
         frame = renderer.draw(frame, body, angle)
-        key = renderer.waitKey(delay=1)
     else:
         frame = renderer.draw(frame, body)
-        key = renderer.waitKey(delay=1)
+
+    key = renderer.waitKey(delay=1)
     
+    if(key == 27):
+        break
+
     # Get direction: Up/Down
     if body is not None:
         right_shoulder = body.landmarks[12]
@@ -102,7 +110,11 @@ while True:
             is_start = True
             ref_right_wrist, ref_right_shoulder = right_wrist, right_shoulder
             ref_hand_vec = ref_right_wrist - ref_right_shoulder
-            
+        if (key==ord('q') and is_start is True):
+            ref_frame = None
+            is_start = False
+            continue
+
         if is_start and ref_hand_vec is not None:
             hand_vec = right_wrist - right_shoulder
             if hand_vec is not None:
@@ -113,10 +125,12 @@ while True:
 
             if angle>VERTICAL_THRESHOLD_UP:
                 print('UP! UP! Away!')
-                tello.move_up(30)
+                tello.send_rc_control(0,0,1,0)
+                time.sleep(1)
+                tello.send_rc_control(0,0,0,0)
             if angle<VERTICAL_THRESHOLD_DOWN:
                 print('Shawty get low, low, low!')
-                tello.move_down(30)
+                tello.send_rc_control(0,0,-1,0)
 
             print(angle)
 

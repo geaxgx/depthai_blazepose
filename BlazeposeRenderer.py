@@ -168,34 +168,29 @@ class BlazeposeRenderer:
     def spawn_drones(self, position, num_drones=len(COLORS_DRONES)):
         if len(self.drone_position)==0:
             self.drone_position = np.hstack([np.random.uniform(low=-1, high=1, size=(4,2)), np.ones((num_drones,1))*0.8])
-            print(self.drone_position.shape)
         else:
             self.drone_position += position
+        # print(self.drone_position)
+        return self.drone_position
 
-    def move_drones(self, position, list_of_points):
-        colors = COLORS_DRONES
-        radius = 0.1
-        self.spawn_drones(position)
-        list_of_points.append(self.drone_position)
-        return list_of_points
+    def move_drones(self, position):
+        # colors = COLORS_DRONES
+        # radius = 0.1
+        new_pose = self.spawn_drones(position)
+        return new_pose
         
-        #TODO show in matplotlib
-        # render.draw_drones(list_of_points)
-        # for i, pos in enumerate(self.drone_position):
-        #     self.vis3d.add_drone(pos, radius, color=colors[i])
 
-
-    def project_to_drone(self, projection, points):
+    def project_to_drone(self, projection):
         # self.vis3d.clear()
         self.vis3d.add_geometries()
     
-
         if projection is not None:
             #normalize points to grid size            
-            list_of_points = self.move_drones(projection, points)
+            new_pose = self.move_drones(projection)
 
-        # self.vis3d.render()        
-        return list_of_points
+        # self.vis3d.render()
+        # print("In Project To Drone: ", new_pose)
+        return new_pose
         
     def draw(self, frame, body, angle=None):
         if not self.pause:
@@ -240,5 +235,3 @@ class BlazeposeRenderer:
             if self.tracker.xyz:
                 self.show_xyz_zone = not self.show_xyz_zone 
         return key
-        
-            

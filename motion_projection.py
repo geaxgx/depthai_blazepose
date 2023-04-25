@@ -159,7 +159,7 @@ def randomize_init_drone_pos(body_landmarks):
     noise = np.random.rand(4,3)*2
     return human_head_center + const_distance + noise
 
-def project_motion_to_drone(pose, list_of_points):
+def project_motion_to_drone(pose):
     #calc weight
     distance = np.linalg.norm(pose, axis=1)
     weight = distance/np.sum(distance)
@@ -170,15 +170,16 @@ def project_motion_to_drone(pose, list_of_points):
     ##TODO send signal to drone
     ## send pose pos (of major_pose_change_idx) projected in drone frame
     
-    points = renderer.project_to_drone(pose[major_pose_change_idx], list_of_points)
-    return points
+    new_pose = renderer.project_to_drone(pose[major_pose_change_idx])
+    print("In project motion to drone: ", new_pose)
+    return new_pose
 
 
 NUM_LANDMARKS = 9
 trajectory = np.zeros((NUM_LANDMARKS,3))
 previous_frame = None
 
-list_of_points = []
+list_of_points = np.array([])
 i=0
 count = 0
 while True:
@@ -203,8 +204,9 @@ while True:
     
 
     if i%5 and i!=0:
-        list_of_points = project_motion_to_drone(trajectory, list_of_points)
-    
+        new_positions = project_motion_to_drone(trajectory)
+        print("new position: ", new_positions)
+        list_of_points = np.append(list_of_points, new_positions)
         # reset trajectory
         trajectory = np.zeros((NUM_LANDMARKS,3))
 
@@ -212,7 +214,7 @@ while True:
     previous_pose = current_pose
     i+=1
     if (i == 10): 
-        render.draw_drones(list_of_points)
+        # render.draw_drones(list_of_points)
         break
 
 print(list_of_points)
