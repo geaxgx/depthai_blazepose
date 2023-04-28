@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import deque
 import render 
+from djitellopy import tello
+from Socket import Socket
+from drone_movement import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -42,6 +45,7 @@ parser_renderer.add_argument("-o","--output",
  
 
 args = parser.parse_args()
+args.edge = True
 
 if args.edge:
     from BlazeposeDepthaiEdge import BlazeposeDepthai
@@ -99,8 +103,10 @@ def calc_pose_vector(body):
             previous frame = current frame
             queue pop
     '''
+    if not hasattr(body, 'xyz'):
+        return None
     # if body.xyz_ref:
-        # Righ wrist
+    # Righ wrist
     right_wrist = body.landmarks_world[16]
     # Left wrist
     left_wrist = body.landmarks_world[15]
@@ -152,12 +158,18 @@ def randomize_init_drone_pos(body_landmarks):
     add a random noise to it
     '''
     human_head_center = body_landmarks[5]+body_landmarks[6]/2
-    const_distance = np.array([[5, 5, -5],
+    # const_distance = np.array([[5, 5, -5],
+    #                            [5, 5, -5],
+    #                            [7, 4, -5],
+    #                            [7, 4, -5]])
+    # noise = np.random.rand(4,3)*2
+    # return human_head_center + const_distance + noise
+
+    const_distance = np.array([[0, 0, 0],
                                [5, 5, -5],
                                [7, 4, -5],
                                [7, 4, -5]])
-    noise = np.random.rand(4,3)*2
-    return human_head_center + const_distance + noise
+    return const_distance
 
 def project_motion_to_drone(pose):
     #calc weight
@@ -190,9 +202,14 @@ while True:
 
     # Draw 2d skeleton
     frame = renderer.draw(frame, body)
-    # key = renderer.waitKey(delay=1)
+    key = renderer.waitKey(delay=1)
 
     current_pose = calc_pose_vector(body)
+
+    if current_pose is None:
+        print('Body Reference not found, skipping frame. Put shoulder or waist in frame.')
+        continue
+
     # print(current_pose)
     if previous_frame is not None:
         del_t_distance = distance(previous_pose, current_pose)
@@ -203,10 +220,10 @@ while True:
         renderer.spawn_drones(drone_pos)
     
 
-    if i%5 and i!=0:
+    if i%10 and i!=0:
         new_positions = project_motion_to_drone(trajectory)
         print("new position: ", new_positions)
-        list_of_points = np.append(list_of_points, new_positions)
+        list_of_points = np.append(list_of_points, new_positions[0])
         # reset trajectory
         trajectory = np.zeros((NUM_LANDMARKS,3))
 
@@ -217,6 +234,26 @@ while True:
         # render.draw_drones(list_of_points)
         break
 
-print(list_of_points)
+# print(list_of_points)
 
-np.save('points.npy', list_of_points)
+list_of_points = list_of_points.reshape(-1,3)*10
+
+speed = np.ones((list_of_points.shape[0], 1))*25
+command_list = np.hstack([list_of_points, speed])
+
+np.save('command_list.npy', command_list)
+
+print('Starting projection')
+
+# sock = Socket(client_ip = '169.254.222.143', \
+#                   server_ip = '169.254.176.231', port = 4000)
+            
+drone = tello.Tello()
+drone.connect()
+
+sock = Socket(client_ip = '169.254.222.143', \
+            server_ip = '169.254.176.231', port = 4000)
+    
+
+
+parallelize(command_list, drone, sock)
