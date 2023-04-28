@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 
-import socket
+from Socket import Socket
 import threading
 from djitellopy import tello
 from time import sleep
 
 def get_command(command, val=None):
     command_dict = {
-        'LEFT-RIGHT': f"rc {val} 0 0 0",
-        # 'RIGHT': "rc 0 1 0 0",
-        'FRONT-BACK': f"rc 0 {val} 0 0",
-        # 'BACK': "rc -1 0 0 0",
-        'UP': f"rc 0 0 {val} 0",
-        # 'DOWN': "rc 0 0 -1 0",
-        'YAW-UP-DOWN': f"rc 0 0 0 {val}",
-        # 'YAW_DOWN': "rc 0 0 0 -1",
+        'LEFT-RIGHT': f"rc {val} 0 0 0",    #-1 if left
+        'FRONT-BACK': f"rc 0 {val} 0 0",    #-1 if back
+        'UP': f"rc 0 0 {val} 0",            #-1 if down
+        'YAW-UP-DOWN': f"rc 0 0 0 {val}",   #-1 if yaw down
         'CLOCKWISE': f"cw {val}",
         'COUNTER-CLOCKWISE': f"ccw {val}",
         'BATTERY': "battery?",
@@ -28,35 +24,19 @@ def get_command(command, val=None):
     
     return command
 
-def send_socket_message(sock, message):
-    server = ('169.254.176.231', 4000)
-    sock.sendto(message.encode('utf-8'), server)
-    data, addr = sock.recvfrom(1024)
-    data = data.decode('utf-8')
-    print("Received from server: " + data)
-    sock.close()
-    return data
-
-
-def bind_socket():
-    host='169.254.222.143' #client ip
-    port = 4000
-    
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind((host,port))
-    print('binding')
-    return s
-
 def relay_command_to_drone(drone=None, is_remote=False):
 
     takeoff_message = get_command("TAKEOFF")
     move_message = get_command("GO", [50,50,0,25])
 
     if is_remote:
-        s = bind_socket()
+        sock = Socket(client_ip = '169.254.222.143', server_ip = '169.254.176.231', \
+                      port = 4000)
         print("Sending Message: ", 'command')
-        send_socket_message(s, takeoff_message)
-        send_socket_message(s, move_message)
+        sock.send_socket_message(takeoff_message)
+        sock.send_socket_message(move_message)
+
+        sock.close()
     else:
         if drone:
             drone.takeoff()
@@ -66,8 +46,6 @@ def relay_command_to_drone(drone=None, is_remote=False):
 def Main():
     print("Client Started")
 
-    # sleep(2)    
-    
     drone = tello.Tello()
     drone.connect()
     
