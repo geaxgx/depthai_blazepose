@@ -8,7 +8,12 @@ from collections import deque
 import render 
 from djitellopy import tello
 from Socket import Socket
-from drone_movement import *
+from drone_movement import get_command
+from tello2_new import control_drone
+import threading 
+import queue
+import socket
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -151,7 +156,7 @@ def calc_pose_vector(body):
 def distance(pose1, pose2):
     return pose2-pose1
 
-def randomize_init_drone_pos(body_landmarks):
+def simulate_init_drone_pos(body_landmarks):
     '''
     take pose of human eye centers
     add a constant value
@@ -187,6 +192,11 @@ def project_motion_to_drone(pose):
     return new_pose
 
 
+# drone_ips = ['192.168.10.1', '192.168.10.1', '192.168.10.1']#[:2]
+# tello_ports = [8889, 8889, 8889]#[:2]
+# adapter_ips = ['192.168.10.50', '192.168.10.51', '192.168.10.52']#[:2]
+
+
 NUM_LANDMARKS = 9
 trajectory = np.zeros((NUM_LANDMARKS,3))
 previous_frame = None
@@ -194,6 +204,88 @@ previous_frame = None
 list_of_points = np.array([])
 i=0
 count = 0
+
+command_queue = queue.Queue()
+
+
+# Define a function to send commands to a single drone
+def send_command(sock, command, drone_ip, tello_port, adapter_ip):
+    print(f'Sending command to {drone_ip}:{tello_port} (Adapter IP: {adapter_ip}): {command}')
+    address = (drone_ip, tello_port)
+    sock.sendto(command.encode(), address) 
+
+def receive_response(sock, drone_ip):
+    while True:
+        try:
+            response, _ = sock.recvfrom(8192)
+            print(f'Received from {drone_ip}: {response.decode()}')
+        except Exception as e:
+            print(f'Error receiving response from {drone_ip}: {e}')
+            break
+
+
+def control_drone(drone_ip, tello_port, adapter_ip):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+    sock.bind((adapter_ip, tello_port))
+
+    recv_thread = threading.Thread(target=receive_response, args=(sock, drone_ip))
+    recv_thread.daemon = True
+    recv_thread.start()
+
+    send_command(sock, "command", drone_ip, tello_port, adapter_ip)
+    time.sleep(1)
+    send_command(sock, "takeoff", drone_ip, tello_port, adapter_ip)
+    time.sleep(5)
+
+    while True:
+        try:
+            command = command_queue.get_nowait()
+            if command == "land":
+                break
+            send_command(sock, command, drone_ip, tello_port, adapter_ip)
+            time.sleep(1)
+        except queue.Empty:
+            # no command in the queue, continue
+            time.sleep(0.1)
+            continue
+
+    # Give time for the last command to complete before closing the socket
+    time.sleep(5)
+    sock.close()
+
+def init_connection():
+    drone_ips = ['192.168.10.1', '192.168.10.1', '192.168.10.1'][:2]
+    tello_ports = [8889, 8889, 8889][:2]
+    adapter_ips = ['192.168.10.50', '192.168.10.51', '192.168.10.52'][:2]
+
+    threads = []
+
+    for i, drone_ip in enumerate(drone_ips):
+        t = threading.Thread(target=control_drone, args=(drone_ip, tello_ports[i], adapter_ips[i]))
+        threads.append(t)
+        t.start()    
+    
+    return threads
+
+
+# def send_destination_position(x, y, z):
+#     # Create a list of commands to send to each drone
+#     commands = [f"go {x} {y} {z} 30"] * len(drone_ips)
+
+#     # Create a thread for each drone and send the commands
+#     threads = []
+#     for i, drone_ip in enumerate(drone_ips):
+#         t = threading.Thread(target=send_command, args=(socket.socket(socket.AF_INET, socket.SOCK_DGRAM), commands[i], drone_ip, tello_ports[i], adapter_ips[i]))
+#         threads.append(t)
+    
+#     for t in threads:
+#         t.start()
+
+#     for t in threads:
+#         t.join()
+
+
 while True:
     # Run blazepose on next frame
     frame, body = tracker.next_frame()
@@ -215,15 +307,22 @@ while True:
         del_t_distance = distance(previous_pose, current_pose)
         #update trajectory
         trajectory+=del_t_distance
+        threads = init_connection()
     else:
-        drone_pos = randomize_init_drone_pos(current_pose)
-        renderer.spawn_drones(drone_pos)
+        # drone_pos = simulate_init_drone_pos(current_pose)
+        # renderer.spawn_drones(drone_pos)
+        pass
     
 
     if i%10 and i!=0:
         new_positions = project_motion_to_drone(trajectory)
         print("new position: ", new_positions)
-        list_of_points = np.append(list_of_points, new_positions[0])
+        # list_of_points = np.append(list_of_points, new_positions[0])
+        new_pos = (new_positions[0]*40).astype(np.int32)
+
+        #send command to drones
+        command_queue.put(f"go {new_pos[0]} {new_pos[1]} {new_pos[2]} 30")
+
         # reset trajectory
         trajectory = np.zeros((NUM_LANDMARKS,3))
 
@@ -234,26 +333,51 @@ while True:
         # render.draw_drones(list_of_points)
         break
 
+
+for i in range(len(threads)):
+    command_queue.put("land")
+
+# join worker threads
+for t in threads:
+    t.join()
+
+print("All threads finished.")
+
+
 # print(list_of_points)
 
-list_of_points = list_of_points.reshape(-1,3)*10
+# list_of_points = list_of_points.reshape(-1,3)*10
 
-speed = np.ones((list_of_points.shape[0], 1))*25
-command_list = np.hstack([list_of_points, speed])
+# speed = np.ones((list_of_points.shape[0], 1))*25
+# command_list = np.hstack([list_of_points, speed])
 
-np.save('command_list.npy', command_list)
+# np.save('command_list.npy', command_list)
 
-print('Starting projection')
+# print('Starting projection')
 
 # sock = Socket(client_ip = '169.254.222.143', \
 #                   server_ip = '169.254.176.231', port = 4000)
             
-drone = tello.Tello()
-drone.connect()
+# drone = tello.Tello()
+# drone.connect()
 
-sock = Socket(client_ip = '169.254.222.143', \
-            server_ip = '169.254.176.231', port = 4000)
+# sock = Socket(client_ip = '169.254.222.143', \
+#             server_ip = '169.254.176.231', port = 4000)
     
 
 
-parallelize(command_list, drone, sock)
+# def parallelize_comms(threads, command_list=None):
+#     '''
+#     command list of size (X,4)
+#     '''
+#     if command_list is None:
+#         command_list = np.load('command_list.npy').astype(np.int32)
+
+#     command_list[:,:3,] = np.abs(command_list[:,:3,]*4)
+    
+#     command_list = [get_command("GO", command) for command in command_list]
+
+
+
+
+# parallelize(command_list)
