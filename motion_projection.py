@@ -3,7 +3,9 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 from collections import deque
+import render 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -168,14 +170,18 @@ def project_motion_to_drone(pose):
     ##TODO send signal to drone
     ## send pose pos (of major_pose_change_idx) projected in drone frame
     
-    renderer.project_to_drone(pose[major_pose_change_idx]/2)
+    new_pose = renderer.project_to_drone(pose[major_pose_change_idx])
+    print("In project motion to drone: ", new_pose)
+    return new_pose
+
 
 NUM_LANDMARKS = 9
 trajectory = np.zeros((NUM_LANDMARKS,3))
 previous_frame = None
 
-
+list_of_points = np.array([])
 i=0
+count = 0
 while True:
     # Run blazepose on next frame
     frame, body = tracker.next_frame()
@@ -198,11 +204,19 @@ while True:
     
 
     if i%5 and i!=0:
-        project_motion_to_drone(trajectory)
-    
-        #reset trajectory
+        new_positions = project_motion_to_drone(trajectory)
+        print("new position: ", new_positions)
+        list_of_points = np.append(list_of_points, new_positions)
+        # reset trajectory
         trajectory = np.zeros((NUM_LANDMARKS,3))
 
     previous_frame = frame
     previous_pose = current_pose
     i+=1
+    if (i == 10): 
+        # render.draw_drones(list_of_points)
+        break
+
+print(list_of_points)
+
+np.save('points.npy', list_of_points)

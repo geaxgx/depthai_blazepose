@@ -3,6 +3,8 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
+from djitellopy import Tello
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--edge', action="store_true",
@@ -58,14 +60,26 @@ tracker = BlazeposeDepthai(input_src=args.input,
 
 renderer = BlazeposeRenderer(
                 tracker, 
-                show_3d=args.show_3d, 
+                show_3d=False, 
                 output=args.output)
 
 ref_frame = None
 is_start = False
 ref_hand_vec = None
-VERTICAL_THRESHOLD_UP    = 1.0  ## radians 
-VERTICAL_THRESHOLD_DOWN  = -1.0  ## radians 
+VERTICAL_THRESHOLD_UP    = 0.5  ## radians 
+VERTICAL_THRESHOLD_DOWN  = -0.5  ## radians 
+
+
+tello = Tello()
+
+tello.connect()
+
+tello.send_keepalive()
+
+tello.streamon()
+# frame_read = tello.get_frame_read()
+
+tello.takeoff()
 
 def dot_prd(A, B):
     return np.dot(A, B)/(np.linalg.norm(A)*np.linalg.norm(B))
@@ -75,10 +89,18 @@ while True:
     frame, body = tracker.next_frame()
     if frame is None: break
 
+
     # Draw 2d skeleton
-    frame = renderer.draw(frame, body)
+    if is_start:
+        frame = renderer.draw(frame, body, angle)
+    else:
+        frame = renderer.draw(frame, body)
+
     key = renderer.waitKey(delay=1)
     
+    if(key == 27):
+        break
+
     # Get direction: Up/Down
     if body is not None:
         right_shoulder = body.landmarks[12]
@@ -88,7 +110,11 @@ while True:
             is_start = True
             ref_right_wrist, ref_right_shoulder = right_wrist, right_shoulder
             ref_hand_vec = ref_right_wrist - ref_right_shoulder
-            
+        if (key==ord('q') and is_start is True):
+            ref_frame = None
+            is_start = False
+            continue
+
         if is_start and ref_hand_vec is not None:
             hand_vec = right_wrist - right_shoulder
             if hand_vec is not None:
@@ -97,10 +123,15 @@ while True:
             else:
                 print('Right arm not visible completely. Please Align.')
 
-            # if angle>VERTICAL_THRESHOLD_UP:
-            #     print('UP! UP! Away!')
-            # if angle<VERTICAL_THRESHOLD_DOWN:
-            #     print('Shawty get low, low, low!')
+            if angle>VERTICAL_THRESHOLD_UP:
+                print('UP! UP! Away!')
+                tello.send_rc_control(0,0,1,0)
+                time.sleep(1)
+                tello.send_rc_control(0,0,0,0)
+            if angle<VERTICAL_THRESHOLD_DOWN:
+                print('Shawty get low, low, low!')
+                tello.send_rc_control(0,0,-1,0)
+
             print(angle)
 
     ## stop
@@ -113,3 +144,5 @@ while True:
         break
 renderer.exit()
 tracker.exit()
+
+tello.land()
