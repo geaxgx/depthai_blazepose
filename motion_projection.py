@@ -3,13 +3,13 @@
 from BlazeposeRenderer import BlazeposeRenderer
 import argparse
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from collections import deque
 import render 
 from djitellopy import tello
 from Socket import Socket
 from drone_movement import get_command
-from tello2_new import control_drone
+# from tello2_new import control_drone
 import threading 
 import queue
 import socket
@@ -255,9 +255,9 @@ def control_drone(drone_ip, tello_port, adapter_ip):
     sock.close()
 
 def init_connection():
-    drone_ips = ['192.168.10.1', '192.168.10.1', '192.168.10.1'][:2]
-    tello_ports = [8889, 8889, 8889][:2]
-    adapter_ips = ['192.168.10.50', '192.168.10.51', '192.168.10.52'][:2]
+    drone_ips = ['192.168.10.1', '192.168.10.1', '192.168.10.1']
+    tello_ports = [8889, 8889, 8889]
+    adapter_ips = ['192.168.10.51', '192.168.10.100', '192.168.10.102']
 
     threads = []
 
@@ -329,9 +329,9 @@ while True:
     previous_frame = frame
     previous_pose = current_pose
     i+=1
-    if (i == 10): 
-        # render.draw_drones(list_of_points)
-        break
+    # if (i == 10): 
+    #     # render.draw_drones(list_of_points)
+    #     break
 
 
 for i in range(len(threads)):

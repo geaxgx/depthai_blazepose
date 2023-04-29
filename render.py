@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from o3d_utils import Visu3D
 import mediapipe_utils as mpu
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
 # LINE_BODY and COLORS_BODY are used when drawing the skeleton in 3D. 
