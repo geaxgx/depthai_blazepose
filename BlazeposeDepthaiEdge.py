@@ -37,7 +37,7 @@ class BlazeposeDepthai:
     - lm_model: Blazepose landmark model blob file
                     - None or "full": the default blob file LANDMARK_MODEL_FULL,
                     - "lite": the default blob file LANDMARK_MODEL_LITE,
-                    - "831": the full model from previous version of mediapipe (0.8.3.1) LANDMARK_MODEL_FULL_0831,
+                    - "heavy": the default blob file LANDMARK_MODEL_HEAVY,
                     - a path of a blob file. 
     - lm_score_thresh : confidence score to determine whether landmarks prediction is reliable (a float between 0 and 1).
     - xyz: boolean, when True get the (x, y, z) coords of the reference point (center of the hips) (if the device supports depth measures).
